@@ -9,7 +9,7 @@ class LevelListView(generics.ListAPIView):
         include_completed = request.query_params.get(
             'include_completed', 'false').lower() == 'true'
 
-        queryset = ProductionRing.objects.all()
+        queryset = ProductionRing.objects.filter(is_active=True)
         if not include_completed:
             queryset = queryset.exclude(status='Completed')
 
@@ -22,7 +22,7 @@ class OredriveListView(generics.ListAPIView):
         include_completed = request.query_params.get(
             'include_completed', 'false').lower() == 'true'
 
-        queryset = ProductionRing.objects.filter(level=level)
+        queryset = ProductionRing.objects.filter(is_active=True, level=level)
         if not include_completed:
             queryset = queryset.exclude(status='Completed')
 
@@ -36,7 +36,7 @@ class RingNumberListView(generics.ListAPIView):
             'include_completed', 'false').lower() == 'true'
 
         queryset = ProductionRing.objects.filter(
-            level=level, oredrive=oredrive)
+            is_active=True, level=level, oredrive=oredrive)
         if not include_completed:
             queryset = queryset.exclude(status='Completed')
 
@@ -56,7 +56,7 @@ class RingView(generics.RetrieveAPIView):
             'include_completed', 'false').lower() == 'true'
 
         queryset = ProductionRing.objects.filter(
-            level=level, oredrive=oredrive, ring_number_txt=ring_number_txt)
+            is_active=True, level=level, oredrive=oredrive, ring_number_txt=ring_number_txt)
         if not include_completed:
             queryset = queryset.exclude(status='Completed')
 
