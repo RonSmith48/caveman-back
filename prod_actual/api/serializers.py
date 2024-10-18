@@ -1,10 +1,10 @@
 from rest_framework import serializers
-from prod_actual.models import ProductionRing
+import prod_actual.models as m
 
 
 class ProdRingSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProductionRing
+        model = m.ProductionRing
         fields = '__all__'  # Include all fields for now, or specify specific fields as needed
 
     def create(self, validated_data):
@@ -18,3 +18,10 @@ class ProdRingSerializer(serializers.ModelSerializer):
 
 class SingleFileSerializer(serializers.Serializer):
     file = serializers.FileField()
+
+
+class BoggedTonnesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = m.BoggedTonnes
+        fields = ['id', 'production_ring', 'bogged_tonnes',
+                  'shkey', 'entered_by', 'datetime_stamp']
