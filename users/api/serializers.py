@@ -111,7 +111,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             return data
         else:
             logger.warning("User not registered", exc_info=True, extra={
-                'additional_info': credentials.email,
+                'additional_info': credentials,
                 'url': 'login',
             })
             raise AuthenticationFailed('User not registered')
