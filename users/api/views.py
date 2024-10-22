@@ -234,6 +234,7 @@ class LoginView(TokenObtainPairView):
     serializer_class = s.CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
+        print("authenticating user")
         serializer = self.get_serializer(data=request.data)
         try:
 
