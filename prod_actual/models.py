@@ -68,7 +68,6 @@ class ProductionRing(Location):
     has_pyrite = models.BooleanField(default=False)
     in_water_zone = models.BooleanField(default=False)
     is_making_water = models.BooleanField(default=False)
-    has_geo_dome_entry = models.BooleanField(default=False)
     in_overdraw_zone = models.BooleanField(
         default=False, blank=True, null=True)
     in_flow = models.BooleanField(default=False)
@@ -77,6 +76,7 @@ class ProductionRing(Location):
     is_redrilled = models.BooleanField(default=False)
     has_bg_report = models.BooleanField(default=False)
     has_blocked_holes = models.BooleanField(default=False)
+    has_lost_rods = models.BooleanField(default=False)
 
     def __str__(self):
         return f'{self.level} {self.oredrive} {self.ring_number_txt}'
@@ -129,3 +129,41 @@ class MultifireGroup(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     entered_by = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, blank=True, null=True)
+
+
+class RingComments(models.Model):
+    ring_id = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
+    is_active = models.BooleanField(default=True)
+    deactivated_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='editor')
+    department = models.CharField(max_length=50)
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='author')
+    datetime = models.DateTimeField(auto_now_add=True)
+    comment = models.TextField()
+    # eg. driller, loader, chargeup
+    show_to_operator = models.CharField(max_length=50, blank=True, null=True)
+
+
+class RingState(models.Model):
+    state = models.CharField(max_length=30)
+
+    def __str__(self):
+        return self.state
+
+
+class RingStateChange(models.Model):
+    ring_state_id = models.BigAutoField(primary_key=True)
+    is_active = models.BooleanField(default=True)
+    location_id = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    shkey = models.CharField(max_length=20, blank=True, null=True)
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, blank=True, null=True)
+    # This is a secondary state, a ring can have more than 1 state
+    state = models.ForeignKey(RingState, on_delete=models.CASCADE)
+    comment = models.TextField(blank=True, null=True)
+    operation_complete = models.BooleanField(default=True)
+    mtrs_drilled = models.DecimalField(
+        max_digits=5, decimal_places=1, default=0)
+    holes_completed = models.SmallIntegerField(blank=True, null=True)
