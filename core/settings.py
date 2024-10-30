@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'settings',
     'logs',
     'menu',
+    'whatif',
 ]
 
 MIDDLEWARE = [
