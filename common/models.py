@@ -19,7 +19,7 @@ class Location(models.Model):
     z = models.DecimalField(max_digits=12, decimal_places=6)
 
     def __str__(self):
-        return self.description
+        return self.description if self.description else f'Location {self.location_id}'
 
     class Meta:
         abstract = True
@@ -28,7 +28,7 @@ class Location(models.Model):
 class Reference(models.Model):
     name = models.CharField(max_length=255)
     # store json report
-    report = JSONField()
+    report = JSONField(blank=True, null=True)
     # takes shkey
     for_date = models.CharField(max_length=10, blank=True, null=True)
     expiry = models.CharField(max_length=10, blank=True, null=True)
