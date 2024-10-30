@@ -14,4 +14,5 @@ urlpatterns = [
     path('api/report/', include('report.api.urls')),
     path('api/settings/', include('settings.api.urls')),
     path('api/users/', include('users.api.urls')),
+    path('api/whatif/', include('whatif.api.urls')),
 ]
