@@ -7,6 +7,8 @@ from prod_concept.models import FlowModelConceptRing
 import json
 
 # Create your models here.
+
+
 class Scenario(models.Model):
     scenario = models.AutoField(primary_key=True)
     name = models.CharField(max_length=20, blank=True, null=True)
@@ -39,7 +41,16 @@ class ScheduleSimulator(Location):
         related_name='simulators'
     )
     blastsolids_id = models.CharField(max_length=30)
-    start_date = models.CharField(max_length=10, blank=True, null=True)
-    finish_date = models.CharField(max_length=10, blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True)
+    finish_date = models.DateField(blank=True, null=True)
     sequence = models.IntegerField(blank=True, null=True)
+    mining_direction = models.CharField(max_length=2, blank=True, null=True)
     json = JSONField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        # Check for duplicate blastsolids_id within the same scenario
+        if not ScheduleSimulator.objects.filter(
+            blastsolids_id=self.blastsolids_id, scenario=self.scenario
+        ).exists():
+            super(ScheduleSimulator, self).save(*args, **kwargs)
+        # Optional: Log or ignore duplicates silently

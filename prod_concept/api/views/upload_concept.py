@@ -14,6 +14,7 @@ import prod_concept.api.serializers as s
 
 from settings.models import ProjectSetting
 from prod_actual.models import ProductionRing
+from common.functions.block_adjacency import BlockAdjacencyFunctions
 
 from datetime import datetime
 from decimal import Decimal
@@ -47,13 +48,18 @@ class ConceptRingsFileHandler():
         self.error_msg = None
         self.success_msg = None
         self.user = ''
+        self.touched_levels = set()
 
     def handle_flow_concept_file(self, request, file):
         self.user = request.user
         self.read_flow_concept_file(file)
+        b = BlockAdjacencyFunctions()
+        b.remap_levels(self.touched_levels)
+
         if self.error_msg:
             return {'msg': self.error_msg, 'msg_type': 'error'}
         else:
+
             self.success_msg = f'{self.rings_created} Conceptual rings created, {
                 self.rings_updated} updated, {self.rings_orphaned} rings orphaned'
             return {'msg': self.success_msg, 'msg_type': 'success'}
@@ -95,6 +101,8 @@ class ConceptRingsFileHandler():
                         drv_num = int(row[required_columns["drive"]])
                         create_record = True
                         bs_id = row[required_columns["id"]]
+                        level = self.number_fix(row[required_columns["level"]])
+                        self.touched_levels.add(level)
 
                         # Create a savepoint
                         sid = transaction.savepoint()
@@ -112,8 +120,7 @@ class ConceptRingsFileHandler():
                             # Update the existing record
                             existing_record.description = row[required_columns["name"]]
                             existing_record.inactive = False
-                            existing_record.level = self.number_fix(
-                                row[required_columns["level"]])
+                            existing_record.level = level
                             existing_record.heading = row[required_columns["heading"]]
                             existing_record.drive = self.number_fix(
                                 row[required_columns["drive"]])
@@ -142,8 +149,7 @@ class ConceptRingsFileHandler():
                             m.FlowModelConceptRing.objects.create(
                                 description=row[required_columns["name"]],
                                 is_active=True,
-                                level=self.number_fix(
-                                    row[required_columns["level"]]),
+                                level=level,
                                 blastsolids_id=row[required_columns["id"]],
                                 heading=row[required_columns["heading"]],
                                 drive=self.number_fix(
