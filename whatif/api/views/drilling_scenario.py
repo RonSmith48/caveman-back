@@ -18,6 +18,8 @@ from django.db.models import F, Q, ExpressionWrapper
 from django.db.models.functions import Abs, ExtractMonth, ExtractYear
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pprint import pprint
+from copy import deepcopy
 
 
 import csv
@@ -59,7 +61,7 @@ class ScheduleFileHandler():
         self.min_precharge_amount = 7.5  # meters
         self.min_amount_drilled = 10  # meters
         # self.scenario = None
-        self.scenario = m.Scenario.objects.get(scenario=37)
+        self.scenario = m.Scenario.objects.get(scenario=16)
 
     def handle_schedule_file(self, request, file, scenario_name):
         user = request.user
@@ -72,7 +74,7 @@ class ScheduleFileHandler():
         # )
         # self.scenario = scenario
 
-        # Process the uploaded CSV file
+        # # Process the uploaded CSV file
         # print("reading csv into scenario table")
         # rows_processed = self.read_csv(file)
         # print("marrying concept rings")
@@ -152,9 +154,8 @@ class ScheduleFileHandler():
         distinct_levels = m.ScheduleSimulator.objects.filter(
             scenario=self.scenario).values_list('level', flat=True).distinct()
         level_list = list(distinct_levels)
-        print('levels list', level_list)  # ============
         start_state = self.get_bcd_start_points_actual(level_list)
-        print(start_state)  # ======================
+        pprint(start_state)  # ======================
         distinct_months = m.ScheduleSimulator.objects.filter(scenario=self.scenario).annotate(
             year=ExtractYear('start_date'),
             month=ExtractMonth('start_date')
@@ -179,21 +180,20 @@ class ScheduleFileHandler():
     def get_bcd_start_points_actual(self, level_list):
         snapshot_now = []
         for level in level_list:
-            print('working on level:', level)  # ===================
             level_status = {'level': level, 'oredrives': []}
             distinct_drives = pcm.FlowModelConceptRing.objects.filter(
                 is_active=True, level=level).values_list('description', flat=True).distinct()
             drives_list = list(distinct_drives)
             od = []
             for drive_desc in drives_list:
-                print('working on od:', drive_desc)  # ================
-                od.append(self.get_oredrive_status(level, drive_desc))
+                curr_status = self.get_oredrive_status(level, drive_desc)
+                od.append(curr_status)
             level_status['oredrives'] = od
             snapshot_now.append(level_status)
         return snapshot_now
 
     def get_oredrive_status(self, level, drive_desc):
-        od = {'bogging': None, 'charged': None,
+        od = {'name': drive_desc, 'bogging': None, 'charged': None,
               'drilled': None, 'designed': None, 'direction': None}
 
         drive_actuals = pam.ProductionRing.objects.filter(
@@ -212,33 +212,81 @@ class ScheduleFileHandler():
 
         reference_state = None
         reference_key = None
+        comparitor_state = None
+        comparitor_key = None
         comparator = False
 
         for state_name, queryset in possible_states.items():
-            print('working on:', state_name)  # =============
             if queryset.exists():
-                # =====
-                for r in queryset:
-                    print(r)  # ============
                 if reference_state is None:
                     reference_state = queryset
                     reference_key = state_name
                 else:
                     comparator = True
+                    comparitor_state = queryset
+                    comparitor_key = state_name
                     od[state_name] = self.get_farthest_ring(
                         reference_state, queryset)
             # find value of reference state
         if comparator:
-            print('doing comparisons', comparator)  # ==============
             od[reference_key] = self.get_closest_ring(
-                queryset, reference_state)
+                comparitor_state, reference_state)
             baf = BlockAdjacencyFunctions()
-            # =============
-            print('getting direction', od[reference_key], od[state_name])
             od['direction'] = baf.determine_direction(
-                od[reference_key], od[state_name])
-        print(od)  # ===============
+                od[reference_key], od[comparitor_key])
+        elif reference_key == 'designed':
+            od['designed'], od['direction'] = self.get_last_designed_plus_dir(reference_state)
         return od
+    
+    def get_last_designed_plus_dir(self, designed_queryset):
+        # try to use ring numbers
+            reference_ring = None
+            reference_num = None
+            comparator_ring = None
+            comparator_num = None
+            for ring in designed_queryset:
+                try:
+                    ring_num = int(ring.ring_number_txt)
+                    if ring_num < 1000:
+                        if reference_ring:
+                            comparator_ring = ring
+                            comparator_num = ring_num
+                            baf = BlockAdjacencyFunctions()
+                            
+                            # Determine the direction based on the comparison
+                            if reference_num < comparator_num:
+                                dir = baf.determine_direction(reference_ring, comparator_ring)
+                            else:
+                                dir = baf.determine_direction(comparator_ring, reference_ring)
+                            
+                            # Get the last ring in the specified direction
+                            last_ring = self.get_last_ring_in_direction(designed_queryset, dir)
+                            return last_ring, dir
+                        else:
+                            # Set the reference ring and its number
+                            reference_ring = ring
+                            reference_num = ring_num
+                except ValueError as e:
+                    print(f"Error: Unable to convert ring number to integer: {e}")
+                    continue
+                except Exception as e:
+                    print(f"An unexpected error occurred: {e}")
+                    continue
+
+
+    def get_last_ring_in_direction(self, queryset, direction):
+        baf = BlockAdjacencyFunctions()
+        last_ring = None
+        max_distance = 0
+        for ring in queryset:
+            if not last_ring:
+                last_ring = ring
+            elif baf.determine_direction(last_ring, ring) == direction:
+                last_ring = ring
+
+        return last_ring
+                        
+
 
     def get_farthest_ring(self, these_rings, those_rings):
         """
@@ -308,9 +356,7 @@ class ScheduleFileHandler():
         updated_blocks = []
 
         for sched_block in to_update:
-            print(sched_block.description)  # ===
-            direction = self.calc_mining_direction(sched_block, self.scenario)
-            print("Direction", direction)  # ===================
+            direction = self.calc_mining_direction(sched_block)
             sched_block.mining_direction = direction
             updated_blocks.append(sched_block)
 
@@ -322,16 +368,12 @@ class ScheduleFileHandler():
         # Sched_sim, yeah i know, its a shit name for a simulated scheduled block.. but what to do?
 
         if self.is_block_in_flow_concept(sched_sim):
-            print("trying schedule dates")
             use_dates = self.direction_check_sched_dates(sched_sim)
             if use_dates:
-                print("used dates from schedule")  # =====================
                 return use_dates
             use_status = self.direction_check_status(sched_sim)
             if use_status:
                 return use_status
-            # =====================
-            print("used count direction from start of drive")
             return self.direction_start_of_drive(sched_sim)
         else:
             return None
@@ -389,90 +431,59 @@ class ScheduleFileHandler():
             return None
 
     def direction_check_status(self, sched_sim):
-        current_block = sched_sim.concept_ring
-        actuals = pam.ProductionRing.objects.filter(
-            is_active=True, concept_ring=current_block)
+        oredrive_desc = sched_sim.description
+        designed_rings = pam.ProductionRing.objects.filter(
+            is_active=True, concept_ring__description=oredrive_desc)
 
-        adjacent_blocks = pcm.BlockAdjacency.objects.filter(
-            block=current_block)
-        adj_same_drive = [
-            (block.adjacent_block, block.direction)
-            for block in adjacent_blocks
-            if block.adjacent_block.description == current_block.description]
+        if designed_rings:
+        # Collect possible states in a single dictionary
+            possible_states = {
+                'bogging': designed_rings.filter(status='Bogging'),
+                'charged': designed_rings.filter(status='Charged'),
+                'drilled': designed_rings.filter(status='Drilled'),
+                'designed': designed_rings.filter(status='Designed')
+            }
 
-        if actuals:
-            s = Status()
-            st1 = actuals.first()
-            status1 = st1.status
-            pos1 = s.get_position(status1)
+            reference_state = None
 
-            for adj_block, direction in adj_same_drive:
-                pos_change = 0
-                has_skipped_a_block = False
-                while pos_change == 0:
-                    rings = pam.ProductionRing.objects.filter(
-                        is_active=True, concept_ring=adj_block)
-
-                    if rings:
-                        pos2 = s.get_position(rings.first().status)
-                        pos_change = pos1 - pos2
-                        if pos_change > 0:
-                            return direction
-                        elif pos_change < 0:
-                            return self.opposite_direction[direction]
+            for state_name, queryset in possible_states.items():
+                if queryset.exists():
+                    if reference_state is None:
+                        reference_state = queryset.first()
                     else:
-                        if has_skipped_a_block:
-                            return direction
-                        else:
-                            has_skipped_a_block = True
-
-                    # Retrieve the next adjacent block in the same direction
-                    next_block_adj = pcm.BlockAdjacency.objects.filter(
-                        block=adj_block, direction=direction
-                    ).first()  # Get the first matching adjacency
-
-                    if next_block_adj:
-                        adj_block = next_block_adj.adjacent_block
-                    else:
-                        # End of drive or no further adjacency in this direction
-                        pos_change = 1
+                        comparator_ring = queryset.first()
+                        baf = BlockAdjacencyFunctions()
+                        dir = baf.determine_direction(reference_state, comparator_ring)
+                        return dir
         return None
 
     def direction_start_of_drive(self, sched_sim):
         # Nothing designed, we are close to start of drive
-        current_block = sched_sim.concept_ring
-        adjacent_blocks = pcm.BlockAdjacency.objects.filter(
-            block=current_block)
-        adj_same_drive = [
-            (block.adjacent_block, block.direction)
-            for block in adjacent_blocks
-            if block.adjacent_block.description == current_block.description
-        ]
-        first_count = 0
-        for adj_block, direction in adj_same_drive:
-            if len(adj_same_drive) == 1:  # Use len() to get the length of the list
-                return direction
-            else:
-                # Start counting blocks
-                count = 0
-                end_of_drive = False
-                while not end_of_drive:
-                    next_block = pcm.BlockAdjacency.objects.filter(
-                        block=adj_block, direction=direction
-                    ).first()
-                    if next_block:
-                        adj_block = next_block.adjacent_block  # Access the adjacent_block field
-                        count += 1
-                    else:
-                        first_count = count
-                        end_of_drive = True
-        if first_count > count:
-            return direction
+        oredrive_desc = sched_sim.description
+        blocks_in_drive = pcm.FlowModelConceptRing.objects.filter(description=oredrive_desc)
+        this_block_queryset = pcm.FlowModelConceptRing.objects.filter(blastsolids_id=sched_sim.blastsolids_id)
+        if this_block_queryset:
+            this_block = this_block_queryset.first()
+            farthest_block = self.get_farthest_block(this_block, blocks_in_drive)
+            baf = BlockAdjacencyFunctions()
+            return baf.determine_direction(this_block, farthest_block)
         else:
-            return self.opposite_direction[direction]
+            print(f'{oredrive_desc} block {sched_sim.blastsolids_id} does not exist in concept')
+            return None
 
     def get_levels_list(self):
         levels = m.ScheduleSimulator.objects.filter(
             is_active=True, scenario=self.scenario).values_list('level', flat=True).distinct()
 
         return list(levels)
+    
+    def get_farthest_block(self, this_block, those_blocks):
+            baf = BlockAdjacencyFunctions()
+            farthest_block = None
+            max_distance = 0
+            for block in those_blocks:
+                distance = baf.get_dist_to_block(this_block, block)
+                if distance > max_distance:
+                    max_distance = distance
+                    farthest_block = block
+            return farthest_block
