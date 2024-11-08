@@ -23,6 +23,7 @@ from copy import deepcopy
 
 
 import csv
+import time
 import logging
 import pandas as pd
 
@@ -61,7 +62,7 @@ class ScheduleFileHandler():
         self.min_precharge_amount = 7.5  # meters
         self.min_amount_drilled = 10  # meters
         # self.scenario = None
-        self.scenario = m.Scenario.objects.get(scenario=16)
+        self.scenario = m.Scenario.objects.get(scenario=4)
 
     def handle_schedule_file(self, request, file, scenario_name):
         user = request.user
@@ -91,7 +92,7 @@ class ScheduleFileHandler():
 
     def read_csv(self, file):
         """
-        Read the CSV file and create ScheduleSimulator entries for each row.
+        Read the CSV file and create SchedSim entries for each row.
         """
         # Fetch the required columns from the settings
         try:
@@ -129,9 +130,9 @@ class ScheduleFileHandler():
             except ValueError:
                 finish_date = None
 
-            # Create a ScheduleSimulator object for each row
-            m.ScheduleSimulator.objects.create(
-                concept_ring=None,  # Assuming you'll handle concept_ring logic separately
+            # Create a SchedSim object for each row
+            m.SchedSim.objects.create(
+                bogging_block=None,  # Assuming you'll handle bogging_block logic separately
                 production_ring=None,  # Assuming you'll handle production_ring logic separately
                 scenario=self.scenario,
                 description=row.get(required_columns.get("name", ''), ''),
@@ -139,9 +140,6 @@ class ScheduleFileHandler():
                 start_date=start_date,
                 finish_date=finish_date,
                 level=int(row.get(required_columns.get("level", ''), 0)),
-                x=row.get(required_columns.get("x", 0), 0),
-                y=row.get(required_columns.get("y", 0), 0),
-                z=row.get(required_columns.get("z", 0), 0),
                 json={},  # Handle json field if required
             )
 
@@ -150,32 +148,176 @@ class ScheduleFileHandler():
         return rows_processed
 
     def run_scenario(self):
-        # Get distinct levels within the specified scenario
-        distinct_levels = m.ScheduleSimulator.objects.filter(
-            scenario=self.scenario).values_list('level', flat=True).distinct()
-        level_list = list(distinct_levels)
-        start_state = self.get_bcd_start_points_actual(level_list)
-        pprint(start_state)  # ======================
-        distinct_months = m.ScheduleSimulator.objects.filter(scenario=self.scenario).annotate(
-            year=ExtractYear('start_date'),
-            month=ExtractMonth('start_date')
-        ).values('year', 'month').distinct().order_by('year', 'month')
+        self.find_missing_drives()
 
-        for entry in distinct_months:
-            year = entry['year']
-            month = entry['month']
 
-            # Filter ScheduleSimulator records for the current (year, month) and scenario
-            records_in_month = m.ScheduleSimulator.objects.filter(
-                scenario=self.scenario,
-                start_date__year=year,
-                start_date__month=month
-            )
 
-            # Process records_in_month as needed
-            for record in records_in_month:
-                # Your processing logic here
-                pass
+
+    def marry_concept_rings(self):
+        sched_to_marry = m.SchedSim.objects.filter(
+            scenario=self.scenario)
+        updated_sched_blocks = []
+
+        for sched_block in sched_to_marry:
+            try:
+                concept_block = m.FlowModelConceptRing.objects.get(
+                    blastsolids_id=sched_block.blastsolids_id)
+            except m.FlowModelConceptRing.DoesNotExist:
+                concept_block = None
+            except m.FlowModelConceptRing.MultipleObjectsReturned:
+                concept_block = None
+
+            # Update the concept_ring field
+            sched_block.bogging_block = concept_block
+            updated_sched_blocks.append(sched_block)
+
+        # Use bulk_update to save all changes at once
+        m.SchedSim.objects.bulk_update(
+            updated_sched_blocks, ['bogging_block'])
+
+    def populate_mining_direction(self):
+        to_update = m.SchedSim.objects.filter(scenario=self.scenario)
+        updated_blocks = []
+
+        for sched_block in to_update:
+            direction = self.calc_mining_direction(sched_block)
+            sched_block.mining_direction = direction
+            updated_blocks.append(sched_block)
+
+        # Perform a bulk update on mining_direction
+        m.SchedSim.objects.bulk_update(
+            updated_blocks, ['mining_direction'])
+
+    def calc_mining_direction(self, sched_sim):
+        # Sched_sim, yeah i know, its a shit name for a simulated scheduled block.. but what to do?
+
+        if self.is_block_in_flow_concept(sched_sim):
+            use_dates = self.direction_check_sched_dates(sched_sim)
+            if use_dates:
+                return use_dates
+            use_status = self.direction_check_status(sched_sim)
+            if use_status:
+                return use_status
+            return self.direction_start_of_drive(sched_sim)
+        else:
+            return None
+
+    def is_block_in_flow_concept(self, sched_sim):
+        blastsolid = sched_sim.blastsolids_id
+        count = pcm.FlowModelConceptRing.objects.filter(
+            is_active=True, blastsolids_id=blastsolid).count()
+        if count > 0:
+            return True
+        else:
+            return False
+
+
+
+    def direction_check_sched_dates(self, sched_sim):
+        sched_same_drive = m.SchedSim.objects.filter(
+            scenario=self.scenario,
+            description=sched_sim.description
+        )
+        if sched_same_drive.count() > 1:
+            current_block = sched_sim.bogging_block
+            ba = BlockAdjacencyFunctions()
+
+            for block_same_drv in sched_same_drive:
+                if ba.is_adjacent(current_block, block_same_drv.bogging_block):
+                    current_block_date = sched_sim.start_date
+                    block_same_drv_date = block_same_drv.start_date
+
+                    if current_block_date < block_same_drv_date:
+                        direction = ba.determine_direction(
+                            current_block, block_same_drv.bogging_block)
+                    elif current_block_date == block_same_drv_date:
+                        continue
+                    else:
+                        direction = ba.determine_direction(
+                            block_same_drv.bogging_block, current_block)
+                    return direction
+        else:
+            return None
+
+    def direction_check_status(self, sched_sim):
+        oredrive_desc = sched_sim.description
+        designed_rings = pam.ProductionRing.objects.filter(
+            is_active=True, concept_ring__description=oredrive_desc)
+
+        if designed_rings:
+        # Collect possible states in a single dictionary
+            possible_states = {
+                'bogging': designed_rings.filter(status='Bogging'),
+                'charged': designed_rings.filter(status='Charged'),
+                'drilled': designed_rings.filter(status='Drilled'),
+                'designed': designed_rings.filter(status='Designed')
+            }
+
+            reference_state = None
+
+            for state_name, queryset in possible_states.items():
+                if queryset.exists():
+                    if reference_state is None:
+                        reference_state = queryset.first()
+                    else:
+                        comparator_ring = queryset.first()
+                        baf = BlockAdjacencyFunctions()
+                        dir = baf.determine_direction(reference_state, comparator_ring)
+                        return dir
+        return None
+
+    def direction_start_of_drive(self, sched_sim):
+        # Nothing designed, we are close to start of drive
+        oredrive_desc = sched_sim.description
+        blocks_in_drive = pcm.FlowModelConceptRing.objects.filter(description=oredrive_desc)
+        this_block_queryset = pcm.FlowModelConceptRing.objects.filter(blastsolids_id=sched_sim.blastsolids_id)
+        if this_block_queryset:
+            this_block = this_block_queryset.first()
+            farthest_block = self.get_farthest_block(this_block, blocks_in_drive)
+            baf = BlockAdjacencyFunctions()
+            return baf.determine_direction(this_block, farthest_block)
+        else:
+            print(f'{oredrive_desc} block {sched_sim.blastsolids_id} does not exist in concept')
+            return None
+        
+
+    def find_missing_drives(self):
+        print("finding missing drives") # ================
+        leveldrives = m.SchedSim.objects.filter(scenario=self.scenario).values_list('description', flat=True).distinct()
+        leveldrive_list = set(leveldrives)
+
+        scenario_entries = m.SchedSim.objects.filter(scenario=self.scenario)
+
+        for scenario_entry in scenario_entries:
+            adjacent_drives = pcm.BlockAdjacency.objects.filter(block=scenario_entry.bogging_block).values_list('adjacent_block__description', flat=True).distinct()
+
+            for adjacent_drive in adjacent_drives:
+                if adjacent_drive not in leveldrive_list:
+                    # Add missing drive to SchedSim
+                    print(f'adding {adjacent_drive} to scenario') # ======================
+                    new_entry = m.SchedSim(
+                        description=adjacent_drive,
+                        scenario=self.scenario,
+                        # Populate other necessary fields for the new entry
+                        level=scenario_entry.level,
+                    )
+                    new_entry.save()  # Save the new entry
+                    leveldrive_list.add(adjacent_drive)  # Add to set to avoid duplicates in this run
+
+
+    
+    # ================== UNUSED METHODS =====================================
+    
+    def get_farthest_block(self, this_block, those_blocks):
+            baf = BlockAdjacencyFunctions()
+            farthest_block = None
+            max_distance = 0
+            for block in those_blocks:
+                distance = baf.get_dist_to_block(this_block, block)
+                if distance > max_distance:
+                    max_distance = distance
+                    farthest_block = block
+            return farthest_block
 
     def get_bcd_start_points_actual(self, level_list):
         snapshot_now = []
@@ -329,66 +471,8 @@ class ScheduleFileHandler():
     def marry_designed_rings(self):
         pass
 
-    def marry_concept_rings(self):
-        sched_to_marry = m.ScheduleSimulator.objects.filter(
-            scenario=self.scenario)
-        updated_sched_blocks = []
-
-        for sched_block in sched_to_marry:
-            try:
-                concept_block = m.FlowModelConceptRing.objects.get(
-                    blastsolids_id=sched_block.blastsolids_id)
-            except m.FlowModelConceptRing.DoesNotExist:
-                concept_block = None
-            except m.FlowModelConceptRing.MultipleObjectsReturned:
-                concept_block = None
-
-            # Update the concept_ring field
-            sched_block.concept_ring = concept_block
-            updated_sched_blocks.append(sched_block)
-
-        # Use bulk_update to save all changes at once
-        m.ScheduleSimulator.objects.bulk_update(
-            updated_sched_blocks, ['concept_ring'])
-
-    def populate_mining_direction(self):
-        to_update = m.ScheduleSimulator.objects.filter(scenario=self.scenario)
-        updated_blocks = []
-
-        for sched_block in to_update:
-            direction = self.calc_mining_direction(sched_block)
-            sched_block.mining_direction = direction
-            updated_blocks.append(sched_block)
-
-        # Perform a bulk update on mining_direction
-        m.ScheduleSimulator.objects.bulk_update(
-            updated_blocks, ['mining_direction'])
-
-    def calc_mining_direction(self, sched_sim):
-        # Sched_sim, yeah i know, its a shit name for a simulated scheduled block.. but what to do?
-
-        if self.is_block_in_flow_concept(sched_sim):
-            use_dates = self.direction_check_sched_dates(sched_sim)
-            if use_dates:
-                return use_dates
-            use_status = self.direction_check_status(sched_sim)
-            if use_status:
-                return use_status
-            return self.direction_start_of_drive(sched_sim)
-        else:
-            return None
-
-    def is_block_in_flow_concept(self, sched_sim):
-        blastsolid = sched_sim.blastsolids_id
-        count = pcm.FlowModelConceptRing.objects.filter(
-            is_active=True, blastsolids_id=blastsolid).count()
-        if count > 0:
-            return True
-        else:
-            return False
-
     def direction_use_adjacent_dir(self, sched_sim):
-        current_block = sched_sim.concept_ring
+        current_block = sched_sim.bogging_block
         adjacent_blocks = pcm.BlockAdjacency.objects.filter(
             block=current_block)
         adj_same_drive = [
@@ -396,94 +480,9 @@ class ScheduleFileHandler():
             for block in adjacent_blocks
             if block.adjacent_block.description == current_block.description]
         for adj_block in adj_same_drive:
-            adj = m.ScheduleSimulator.objects.filter(
+            adj = m.SchedSim.objects.filter(
                 scenario=self.scenario, blastsolids_id=adj_block.blastsolids_id)
             if adj:
                 if adj.mining_direction:
                     return adj.mining_direction
         return None
-
-    def direction_check_sched_dates(self, sched_sim):
-        sched_same_drive = m.ScheduleSimulator.objects.filter(
-            is_active=True,
-            scenario=self.scenario,
-            description=sched_sim.description
-        )
-        if sched_same_drive.count() > 1:
-            current_block = sched_sim.concept_ring
-            ba = BlockAdjacencyFunctions()
-
-            for block_same_drv in sched_same_drive:
-                if ba.is_adjacent(current_block, block_same_drv.concept_ring):
-                    current_block_date = sched_sim.start_date
-                    block_same_drv_date = block_same_drv.start_date
-
-                    if current_block_date < block_same_drv_date:
-                        direction = ba.determine_direction(
-                            current_block, block_same_drv.concept_ring)
-                    elif current_block_date == block_same_drv_date:
-                        continue
-                    else:
-                        direction = ba.determine_direction(
-                            block_same_drv.concept_ring, current_block)
-                    return direction
-        else:
-            return None
-
-    def direction_check_status(self, sched_sim):
-        oredrive_desc = sched_sim.description
-        designed_rings = pam.ProductionRing.objects.filter(
-            is_active=True, concept_ring__description=oredrive_desc)
-
-        if designed_rings:
-        # Collect possible states in a single dictionary
-            possible_states = {
-                'bogging': designed_rings.filter(status='Bogging'),
-                'charged': designed_rings.filter(status='Charged'),
-                'drilled': designed_rings.filter(status='Drilled'),
-                'designed': designed_rings.filter(status='Designed')
-            }
-
-            reference_state = None
-
-            for state_name, queryset in possible_states.items():
-                if queryset.exists():
-                    if reference_state is None:
-                        reference_state = queryset.first()
-                    else:
-                        comparator_ring = queryset.first()
-                        baf = BlockAdjacencyFunctions()
-                        dir = baf.determine_direction(reference_state, comparator_ring)
-                        return dir
-        return None
-
-    def direction_start_of_drive(self, sched_sim):
-        # Nothing designed, we are close to start of drive
-        oredrive_desc = sched_sim.description
-        blocks_in_drive = pcm.FlowModelConceptRing.objects.filter(description=oredrive_desc)
-        this_block_queryset = pcm.FlowModelConceptRing.objects.filter(blastsolids_id=sched_sim.blastsolids_id)
-        if this_block_queryset:
-            this_block = this_block_queryset.first()
-            farthest_block = self.get_farthest_block(this_block, blocks_in_drive)
-            baf = BlockAdjacencyFunctions()
-            return baf.determine_direction(this_block, farthest_block)
-        else:
-            print(f'{oredrive_desc} block {sched_sim.blastsolids_id} does not exist in concept')
-            return None
-
-    def get_levels_list(self):
-        levels = m.ScheduleSimulator.objects.filter(
-            is_active=True, scenario=self.scenario).values_list('level', flat=True).distinct()
-
-        return list(levels)
-    
-    def get_farthest_block(self, this_block, those_blocks):
-            baf = BlockAdjacencyFunctions()
-            farthest_block = None
-            max_distance = 0
-            for block in those_blocks:
-                distance = baf.get_dist_to_block(this_block, block)
-                if distance > max_distance:
-                    max_distance = distance
-                    farthest_block = block
-            return farthest_block

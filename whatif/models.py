@@ -18,14 +18,15 @@ class Scenario(models.Model):
     json = JSONField(blank=True, null=True)
 
 
-class ScheduleSimulator(Location):
-    concept_ring = models.ForeignKey(
+class SchedSim(models.Model):
+    bogging_block = models.ForeignKey(
         FlowModelConceptRing,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='sim_concept_rings'
+        related_name='sim_bogging_block'
     )
+    # The schedule is giving bog block so prod_ring will be set to bog ring
     production_ring = models.ForeignKey(
         ProductionRing,
         on_delete=models.SET_NULL,
@@ -35,22 +36,42 @@ class ScheduleSimulator(Location):
     )
     scenario = models.ForeignKey(
         Scenario,
-        on_delete=models.CASCADE,  # Delete related ScheduleSimulator records
+        on_delete=models.CASCADE,  # Delete related SchedSim records
         null=True,
         blank=True,
         related_name='simulators'
     )
+    last_drill_block = models.ForeignKey(
+        FlowModelConceptRing,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sim_drill_block'
+    )
+    last_charge_block = models.ForeignKey(
+        FlowModelConceptRing,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sim_charge_block'
+    )
+    sum_drill_mtrs_from_prev = models.IntegerField(blank=True, null=True)
+    sum_drill_rings_from_prev = models.IntegerField(blank=True, null=True)
+    sum_tonnes_from_prev = models.IntegerField(blank=True, null=True)
+    sum_charged_rings_from_prev = models.IntegerField(blank=True, null=True)
     blastsolids_id = models.CharField(max_length=30)
     start_date = models.DateField(blank=True, null=True)
     finish_date = models.DateField(blank=True, null=True)
     sequence = models.IntegerField(blank=True, null=True)
     mining_direction = models.CharField(max_length=2, blank=True, null=True)
     json = JSONField(blank=True, null=True)
+    level = models.SmallIntegerField()
+    description = models.CharField(max_length=50, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         # Check for duplicate blastsolids_id within the same scenario
-        if not ScheduleSimulator.objects.filter(
+        if not SchedSim.objects.filter(
             blastsolids_id=self.blastsolids_id, scenario=self.scenario
         ).exists():
-            super(ScheduleSimulator, self).save(*args, **kwargs)
+            super(SchedSim, self).save(*args, **kwargs)
         # Optional: Log or ignore duplicates silently
