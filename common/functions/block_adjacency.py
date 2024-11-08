@@ -9,6 +9,16 @@ class BlockAdjacencyFunctions():
     def __init__(self) -> None:
         self.opposite_direction = {'N': 'S', 'NE': 'SW', 'E': 'W',
                                    'SE': 'NW', 'S': 'N', 'SW': 'NE', 'W': 'E', 'NW': 'SE'}
+        self.dir_tolerance = {
+            'N': ['NW', 'N', 'NE'],
+            'NE': ['N', 'NE', 'E'],
+            'E': ['NE', 'E', 'SE'],
+            'SE': ['E', 'SE', 'S'],
+            'S': ['SE', 'S', 'SW'],
+            'SW': ['S', 'SW', 'W'],
+            'W': ['SW', 'W', 'NW'],
+            'NW': ['W', 'NW', 'N']
+        }
         self.search_radius = 20
 
     def remap_mine(self):
@@ -146,3 +156,26 @@ class BlockAdjacencyFunctions():
                         farthest_block = block
 
         return farthest_block
+    
+    def step_next_block(self, this_block, mining_direction):
+        '''
+        Takes a step in the mining_direction.
+        Will check general direction for blocks in the same drive
+        Returns next block or None.
+        '''
+        this_block_desc = this_block.description
+        tolerated_directions = self.dir_tolerance.get(mining_direction, [])
+
+        # Check for adjacent blocks matching the direction tolerances
+        next_block_adjacency = m.BlockAdjacency.objects.filter(
+            block=this_block,
+            direction__in=tolerated_directions  # Tolerated directions
+        ).select_related('adjacent_block')
+
+        for adjacency in next_block_adjacency:
+            # Ensure the adjacent block's description matches the current block's drive
+            if adjacency.adjacent_block.description == this_block_desc:
+                return adjacency.adjacent_block
+
+        return None
+
