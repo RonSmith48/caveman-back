@@ -31,5 +31,6 @@ class BlockAdjacency(models.Model):
         ('SW', 'Southwest')
     ])
 
-    def __str__(self):
-        return f"Block {self.block.blastsolids_id} adjacent to {self.adjacent_block.blastsolids_id} ({self.direction})"
+    class Meta:
+        unique_together = ('block', 'direction')
+

@@ -29,6 +29,7 @@ class BlockAdjacencyFunctions():
     def remap_levels(self, levels_list):
         # prod_concept/.. upload_concept.py calls this method after upload
         for level in levels_list:
+            print("remapping", level)
             self.remap_level(level)
 
     def remap_level(self, level):
@@ -69,47 +70,56 @@ class BlockAdjacencyFunctions():
         return direction
 
     def determine_direction(self, this_block, that_block):
-        # Calculate the differences in x and y coordinates
-        dx = that_block.x - this_block.x
-        dy = that_block.y - this_block.y
+        if this_block and that_block:
+            # Calculate the differences in x and y coordinates
+            dx = that_block.x - this_block.x
+            dy = that_block.y - this_block.y
 
-        # Calculate the angle in radians and convert to degrees
-        angle = math.degrees(math.atan2(dy, dx))
+            # Calculate the angle in radians and convert to degrees
+            angle = math.degrees(math.atan2(dy, dx))
 
-        # Normalize the angle to a 0-360 degree range
-        angle = (angle + 360) % 360
+            # Normalize the angle to a 0-360 degree range
+            angle = (angle + 360) % 360
 
-        # Determine the direction based on the angle
-        if 337.5 <= angle < 360 or 0 <= angle < 22.5:
-            return 'E'
-        elif 22.5 <= angle < 67.5:
-            return 'NE'
-        elif 67.5 <= angle < 112.5:
-            return 'N'
-        elif 112.5 <= angle < 157.5:
-            return 'NW'
-        elif 157.5 <= angle < 202.5:
-            return 'W'
-        elif 202.5 <= angle < 247.5:
-            return 'SW'
-        elif 247.5 <= angle < 292.5:
-            return 'S'
-        elif 292.5 <= angle < 337.5:
-            return 'SE'
+            # Determine the direction based on the angle
+            if 337.5 <= angle < 360 or 0 <= angle < 22.5:
+                return 'E'
+            elif 22.5 <= angle < 67.5:
+                return 'NE'
+            elif 67.5 <= angle < 112.5:
+                return 'N'
+            elif 112.5 <= angle < 157.5:
+                return 'NW'
+            elif 157.5 <= angle < 202.5:
+                return 'W'
+            elif 202.5 <= angle < 247.5:
+                return 'SW'
+            elif 247.5 <= angle < 292.5:
+                return 'S'
+            elif 292.5 <= angle < 337.5:
+                return 'SE'
+        else:
+            return None
 
     def is_adjacent(self, this_block, that_block):
-        if abs(this_block.x - that_block.x) > self.search_radius:
-            return False
-        elif abs(this_block.y - that_block.y) > self.search_radius:
-            return False
+        if this_block and that_block:
+            if abs(this_block.x - that_block.x) > self.search_radius:
+                return False
+            elif abs(this_block.y - that_block.y) > self.search_radius:
+                return False
+            else:
+                return True
         else:
-            return True
+            return False
 
     def get_dist_to_block(self, this_block, that_block):
-        # Convert x and y coordinates to floats before doing the distance calculation
-        distance = ((float(this_block.x) - float(that_block.x)) **
-                    2 + (float(this_block.y) - float(that_block.y)) ** 2) ** 0.5
-        return distance
+        if this_block and that_block:
+            # Convert x and y coordinates to floats before doing the distance calculation
+            distance = ((float(this_block.x) - float(that_block.x)) **
+                        2 + (float(this_block.y) - float(that_block.y)) ** 2) ** 0.5
+            return distance
+        else:
+            return None
 
     def create_links(self, block, adjacent_blocks):
         for bearing, data in adjacent_blocks.items():
@@ -162,7 +172,8 @@ class BlockAdjacencyFunctions():
         Takes a step in the mining_direction.
         Will check general direction for blocks in the same drive
         Returns next block or None.
-        '''
+        '''       
+
         this_block_desc = this_block.description
         tolerated_directions = self.dir_tolerance.get(mining_direction, [])
 
@@ -176,6 +187,72 @@ class BlockAdjacencyFunctions():
             # Ensure the adjacent block's description matches the current block's drive
             if adjacency.adjacent_block.description == this_block_desc:
                 return adjacency.adjacent_block
-
         return None
+    
+    def step_dist(self, this_block, mining_direction, distance):
+        candidates = []
+        drive_name = this_block.description
+        blocks_in_drive = m.FlowModelConceptRing.objects.filter(description=drive_name)
+        for block in blocks_in_drive:
+            if this_block != block:
+                if self.is_in_general_mining_direction(this_block, block, mining_direction):
+                    dist = self.get_dist_to_block(this_block, block)
+                    candidates.append({dist:block})
+        if candidates:
+            sel_block = None
+            candidates.sort(key=lambda x: x[0])
+            for dist, block in candidates:
+                if dist < distance:
+                    sel_block = block
+                else:
+                    return block
+            return sel_block
+        else:
+            return None
+
+
+    def get_last_block_in_set(self, queryset, mining_direction):
+        reference_block = None
+
+        for block in queryset:
+            if reference_block:
+                if self.is_in_general_mining_direction(reference_block, block, mining_direction):
+                    reference_block = block
+            else:
+                reference_block = block
+        
+        return reference_block
+    
+    def get_last_block_in_drive(self, drive_name, mining_direction):
+        queryset = m.FlowModelConceptRing.objects.filter(description=drive_name)
+        last_block = self.get_last_block_in_set(self, queryset, mining_direction)
+        return last_block
+    
+
+    def is_in_general_mining_direction(self, this_block, that_block, mining_direction):
+        direction = self.determine_direction(this_block, that_block)
+        if mining_direction in self.dir_tolerance[direction]:
+            return True
+        else:
+            return False
+
+    def get_adjacent_drives(self, block):
+        '''
+        Input: A concept block
+        Output: A list of adjacent drives names to the given block
+        '''
+        adjacent_blocks = m.BlockAdjacency.objects.filter(block=block).exclude(adjacent_block__description=block.description)
+        distinct_descriptions = adjacent_blocks.values_list('adjacent_block__description', flat=True).distinct()
+        
+        return list(distinct_descriptions)
+    
+    def get_block_from_adj_named_od(self, this_block, that_drive):
+        # Filter BlockAdjacency to find the record where 'this_block' has an adjacent block with description 'that_drive'
+        adjacency = m.BlockAdjacency.objects.filter(
+            block=this_block,
+            adjacent_block__description=that_drive
+        ).select_related('adjacent_block').first()
+
+        # Return the adjacent block if found, otherwise return None
+        return adjacency.adjacent_block if adjacency else None
 

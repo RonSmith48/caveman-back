@@ -59,7 +59,7 @@ class SchedSim(models.Model):
     sum_drill_rings_from_prev = models.IntegerField(blank=True, null=True)
     sum_tonnes_from_prev = models.IntegerField(blank=True, null=True)
     sum_charged_rings_from_prev = models.IntegerField(blank=True, null=True)
-    blastsolids_id = models.CharField(max_length=30)
+    blastsolids_id = models.CharField(max_length=30, blank=True, null=True) # for bog location only
     start_date = models.DateField(blank=True, null=True)
     finish_date = models.DateField(blank=True, null=True)
     sequence = models.IntegerField(blank=True, null=True)
@@ -68,10 +68,3 @@ class SchedSim(models.Model):
     level = models.SmallIntegerField()
     description = models.CharField(max_length=50, blank=True, null=True)
 
-    def save(self, *args, **kwargs):
-        # Check for duplicate blastsolids_id within the same scenario
-        if not SchedSim.objects.filter(
-            blastsolids_id=self.blastsolids_id, scenario=self.scenario
-        ).exists():
-            super(SchedSim, self).save(*args, **kwargs)
-        # Optional: Log or ignore duplicates silently
