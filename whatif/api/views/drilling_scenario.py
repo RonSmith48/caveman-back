@@ -63,34 +63,35 @@ class ScheduleFileHandler():
         self.min_amount_drilled = 10  # meters
         self.missing_drive_found_blocks = []
         self.error_msg = ""
+
         
         self.scenario = None
-        #self.scenario = m.Scenario.objects.get(scenario=8)
+        self.scenario = m.Scenario.objects.get(scenario=43)
 
     def handle_schedule_file(self, request, file, scenario_name):
         user = request.user
 
-        # Create a new Scenario instance
-        scenario = m.Scenario.objects.create(
-            name=scenario_name,
-            owner=user,
-            datetime_stamp=timezone.now()
-        )
-        self.scenario = scenario
+        # scenario = m.Scenario.objects.create(
+        #     name=scenario_name,
+        #     owner=user,
+        #     datetime_stamp=timezone.now()
+        # )
+        # self.scenario = scenario
 
         # Process the uploaded CSV file
-        print("reading csv into scenario table")
-        rows_processed = self.read_csv(file)
-        if self.error_msg:
-            return {'msg': {'body': msg, 'type': 'error'}}
+        # print("reading csv into scenario table")
+        # rows_processed = self.read_csv(file)
+        # if self.error_msg:
+        #     return {'msg': {'body': msg, 'type': 'error'}}
 
-        print("marrying concept rings")
-        self.marry_concept_rings()
-        print("populating mining direction")
-        self.populate_mining_direction()
-        print("finished processing directions")
+        # print("marrying concept rings")
+        # self.marry_concept_rings()
+        # print("populating mining direction")
+        # self.populate_mining_direction()
+        # print("finished processing directions")
         self.run_scenario()
 
+        rows_processed = 'All'
         msg = f'{rows_processed} rows processed successfully'
 
         return {'msg': {'body': msg, 'type': 'success'}}
@@ -166,9 +167,12 @@ class ScheduleFileHandler():
     def run_scenario(self):
         all_sched = m.SchedSim.objects.filter(scenario=self.scenario)
         
-        for sched_item in all_sched:
-            self.populate_last_charged_block(sched_item)
-            self.populate_last_drill_block(sched_item)
+        # for sched_item in all_sched:
+        #     sched_item.last_charge_block = self.calc_last_charged_block(sched_item)
+        #     sched_item.save()
+        #     self.populate_last_drill_block(sched_item)
+
+
             
 
 
@@ -210,7 +214,7 @@ class ScheduleFileHandler():
     def calc_mining_direction(self, sched_sim):
         # Sched_sim, yeah i know, its a shit name for a simulated scheduled block.. but what to do?
 
-        if self.is_block_in_flow_concept(sched_sim):
+        if sched_sim.blastsolids_id and self.is_block_in_flow_concept(sched_sim):
             use_dates = self.direction_check_sched_dates(sched_sim)
             if use_dates:
                 return use_dates
@@ -219,19 +223,14 @@ class ScheduleFileHandler():
                 return use_status
             return self.direction_start_of_drive(sched_sim)
         elif sched_sim.description:
-            # could be result of missing drive search
             use_status = self.direction_check_status(sched_sim)
             if use_status:
                 return use_status
-            # put TEMP blastsolid_id in for directional purpose
-            for block_dict in self.missing_drive_found_blocks:
-                if sched_sim.description in block_dict:
-                    sched_sim.blastsolids_id = block_dict[sched_sim.description].blastsolids_id
-                    break
             use_prox_to_start = self.direction_start_of_drive(sched_sim)
             if use_prox_to_start:
                 return use_prox_to_start
         else:
+            print("No way of determining mining direction")
             return None
 
     def is_block_in_flow_concept(self, sched_sim):
@@ -314,21 +313,16 @@ class ScheduleFileHandler():
         
 
 
-    def populate_last_charged_block(self, sched_item):
-        last_charged = self.calc_last_charged_block(sched_item)
-        sched_item.last_charge_block = last_charged
-        sched_item.save()
-
-
     def calc_last_charged_block(self, sched_item):
         baf = BlockAdjacencyFunctions()
         last_charged_block = None
+        charged = None
 
         if sched_item.mining_direction:
             if sched_item.bogging_block:
                 charged = baf.step_dist(sched_item.bogging_block, sched_item.mining_direction, self.min_precharge_amount)
             if sched_item.description:
-                # get last charged ring
+                # might already be charged past calc pos
                 last_charged_block = self.get_current_last_block_of_status(sched_item.description, sched_item.mining_direction, 'Charged')
             if charged:
                 if last_charged_block:
@@ -342,7 +336,7 @@ class ScheduleFileHandler():
 
     def get_current_last_block_of_status(self, description, mining_direction, status):
         baf = BlockAdjacencyFunctions()
-        designed_rings = pam.ProductionRing.objects.filter(status=status, concept_ring__description=description)
+        designed_rings = pam.ProductionRing.objects.filter(is_active=True, status=status, concept_ring__description=description)
         if designed_rings:
             last_ring = baf.get_last_block_in_set(designed_rings, mining_direction)
             return last_ring.concept_ring
@@ -356,7 +350,7 @@ class ScheduleFileHandler():
             self.add_min_drilling(sched_item)
             if sched_item.description:
                 eod = baf.get_last_block_in_drive(sched_item.description, sched_item.mining_direction)
-                if sched_item.last_drill_block != eod:
+                if sched_item.last_drill_block and sched_item.last_drill_block != eod:
                     last_drilled = self.get_current_last_block_of_status(sched_item.description, sched_item.mining_direction, 'Drilled')
                     if last_drilled:
                         if baf.is_in_general_mining_direction(sched_item.last_drill_block, last_drilled, sched_item.mining_direction):
@@ -413,21 +407,25 @@ class ScheduleFileHandler():
             adj_schedsim = self.get_adj_schedsim(adj_drive, sched_item)
             if not adj_schedsim:
                 # might have nothing, needs drilling
-                m.SchedSim.objects.create(
+                adj_schedsim = m.SchedSim.objects.create(
                     scenario=self.scenario,
                     description=adj_drive,
                     start_date=sched_item.start_date,
                     level=sched_item.level,
                     json={},
                 )
-            if not adj_schedsim.mining_direction:
-                dir = self.guess_mining_dir_ref_block_only(adj_block, adj_drive)
-                adj_schedsim.mining_direction = dir
+                adj_schedsim.mining_direction = self.calc_mining_dir_without_bog_pos(adj_block, adj_schedsim)
                 adj_schedsim.save()
-            drill = baf.step_dist(adj_block, adj_schedsim.mining_direction)
+                if adj_schedsim.mining_direction:
+                    adj_schedsim.last_charge_block = self.calc_last_charged_block(adj_schedsim)
+                    adj_schedsim.save()
+            if not adj_schedsim.mining_direction:
+                adj_schedsim.mining_direction = self.calc_mining_dir_without_bog_pos(adj_block, adj_schedsim)
+                adj_schedsim.save()
+            drill = baf.step_dist(adj_block, adj_schedsim.mining_direction, self.min_amount_drilled)
             # compare with what is existing
             if adj_schedsim.start_date == sched_item.start_date:
-                if adj_schedsim.last_drill_block:
+                if adj_schedsim.last_drill_block and drill:
                     if baf.is_in_general_mining_direction(adj_schedsim.last_drill_block, drill, adj_schedsim.mining_direction):
                         adj_schedsim.last_drill_block = drill
                         adj_schedsim.save()
@@ -435,9 +433,10 @@ class ScheduleFileHandler():
                     adj_schedsim.last_drill_block = drill
                     adj_schedsim.save()
             else:
-                in_mining_dir = baf.is_in_general_mining_direction(drill, adj_schedsim.last_drill_block, adj_schedsim.mining_direction)
-                if adj_schedsim.last_drill_block and in_mining_dir:
-                    drill = adj_schedsim.last_drill_block
+                if adj_schedsim.last_drill_block and drill:
+                    in_mining_dir = baf.is_in_general_mining_direction(drill, adj_schedsim.last_drill_block, adj_schedsim.mining_direction)
+                    if adj_schedsim.last_drill_block and in_mining_dir:
+                        drill = adj_schedsim.last_drill_block
 
                 m.SchedSim.objects.create(
                     bogging_block=adj_schedsim.bogging_block,
@@ -454,15 +453,31 @@ class ScheduleFileHandler():
                 )   
 
 
-    def guess_mining_dir_ref_block_only(self, ref_block, description):
+    def calc_mining_dir_without_bog_pos(self, ref_block, schedsim):
         # the suckiest way to find direction
-        # assume ref block at start of drive
+        # assume ref block near start of drive
 
         baf = BlockAdjacencyFunctions()
-        drive_blocks = m.FlowModelConceptRing.objects.filter(description=description)
-        farthest_block = self.get_farthest_block(ref_block, drive_blocks)
-        direction = baf.determine_direction(ref_block, farthest_block)
-        return direction
+
+        designed = pam.ProductionRing.objects.filter(is_active=True, concept_ring__description=schedsim.description, status='Bogging')
+        if designed:
+            bogging_block = designed.first().concept_ring
+            blastsolid_id = bogging_block.blastsolids_id
+
+            schedsim.bogging_block = bogging_block
+            schedsim.blastsolids_id = blastsolid_id
+            schedsim.save()
+
+            dir = self.direction_check_status(schedsim)
+            if dir:
+                return dir
+            dir = self.direction_start_of_drive(schedsim)
+            return dir
+        else:
+            drive_blocks = m.FlowModelConceptRing.objects.filter(description=schedsim.description)
+            farthest_block = self.get_farthest_block(ref_block, drive_blocks)
+            direction = baf.determine_direction(ref_block, farthest_block)
+            return direction
 
 
 
@@ -492,200 +507,33 @@ class ScheduleFileHandler():
                 farthest_block = block
         return farthest_block
 
-    
-    # ================== UNUSED METHODS =====================================
-
-    
-    def find_missing_drives(self):
-        leveldrives = m.SchedSim.objects.filter(scenario=self.scenario).values_list('description', flat=True).distinct()
-        leveldrive_list = set(leveldrives)
-
-        scenario_entries = m.SchedSim.objects.filter(scenario=self.scenario)
-
-        for scenario_entry in scenario_entries:
-            adjacent_blocks = pcm.BlockAdjacency.objects.filter(block=scenario_entry.bogging_block)
-
-            for adjacent_block in adjacent_blocks:
-                adjacent_drive = adjacent_block.adjacent_block.description
-                if adjacent_drive not in leveldrive_list:
-                    self.missing_drive_found_blocks.append({adjacent_drive:adjacent_block.adjacent_block})
-                    # Add missing drive to SchedSim
-                    print(f'adding {adjacent_drive} to scenario') # ======================
-                    new_entry = m.SchedSim(
-                        description=adjacent_drive,
-                        scenario=self.scenario,
-                        level=scenario_entry.level,
-                    )
-                    new_entry.save()  # Save the new entry
-                    leveldrive_list.add(adjacent_drive)  # Add to set to avoid duplicates in this run
-
-    
+    #============== COUNTING METHODS =====================
 
 
-    def get_bcd_start_points_actual(self, level_list):
-        snapshot_now = []
-        for level in level_list:
-            level_status = {'level': level, 'oredrives': []}
-            distinct_drives = pcm.FlowModelConceptRing.objects.filter(
-                is_active=True, level=level).values_list('description', flat=True).distinct()
-            drives_list = list(distinct_drives)
-            od = []
-            for drive_desc in drives_list:
-                curr_status = self.get_oredrive_status(level, drive_desc)
-                od.append(curr_status)
-            level_status['oredrives'] = od
-            snapshot_now.append(level_status)
-        return snapshot_now
+    def calculate_drill_ring_sums(self):
+        drives = m.SchedSim.objects.values_list('description', flat=True).distinct()
 
-    def get_oredrive_status(self, level, drive_desc):
-        od = {'name': drive_desc, 'bogging': None, 'charged': None,
-              'drilled': None, 'designed': None, 'direction': None}
+        for drive in drives:
+            drive_schedule = m.SchedSim.objects.filter(description=drive).order_by('start_date')
 
-        drive_actuals = pam.ProductionRing.objects.filter(
-            is_active=True,
-            level=level,
-            concept_ring__description=drive_desc
-        )
+            cumulative_drill_rings = 0
+            previous_schedule_date = None
 
-        # Collect possible states in a single dictionary
-        possible_states = {
-            'bogging': drive_actuals.filter(status='Bogging'),
-            'charged': drive_actuals.filter(status='Charged'),
-            'drilled': drive_actuals.filter(status='Drilled'),
-            'designed': drive_actuals.filter(status='Designed')
-        }
+            for sched in drive_schedule:
+                if previous_schedule_date:
+                    # Calculate drill rings between the previous and current schedule date
+                    drill_rings_between = m.SchedSim.objects.filter(
+                        description=drive,
+                        start_date__gt=previous_schedule_date,
+                        start_date__lte=sched.start_date
+                    ).count()  # or Sum('drill_rings') if rings are stored elsewhere
 
-        reference_state = None
-        reference_key = None
-        comparitor_state = None
-        comparitor_key = None
-        comparator = False
+                    # Update cumulative drill rings
+                    cumulative_drill_rings += drill_rings_between
 
-        for state_name, queryset in possible_states.items():
-            if queryset.exists():
-                if reference_state is None:
-                    reference_state = queryset
-                    reference_key = state_name
-                else:
-                    comparator = True
-                    comparitor_state = queryset
-                    comparitor_key = state_name
-                    od[state_name] = self.get_farthest_ring(
-                        reference_state, queryset)
-            # find value of reference state
-        if comparator:
-            od[reference_key] = self.get_closest_ring(
-                comparitor_state, reference_state)
-            baf = BlockAdjacencyFunctions()
-            od['direction'] = baf.determine_direction(
-                od[reference_key], od[comparitor_key])
-        elif reference_key == 'designed':
-            od['designed'], od['direction'] = self.get_last_designed_plus_dir(reference_state)
-        return od
-    
-    def get_last_designed_plus_dir(self, designed_queryset):
-        # try to use ring numbers
-            reference_ring = None
-            reference_num = None
-            comparator_ring = None
-            comparator_num = None
-            for ring in designed_queryset:
-                try:
-                    ring_num = int(ring.ring_number_txt)
-                    if ring_num < 1000:
-                        if reference_ring:
-                            comparator_ring = ring
-                            comparator_num = ring_num
-                            baf = BlockAdjacencyFunctions()
-                            
-                            # Determine the direction based on the comparison
-                            if reference_num < comparator_num:
-                                dir = baf.determine_direction(reference_ring, comparator_ring)
-                            else:
-                                dir = baf.determine_direction(comparator_ring, reference_ring)
-                            
-                            # Get the last ring in the specified direction
-                            last_ring = self.get_last_ring_in_direction(designed_queryset, dir)
-                            return last_ring, dir
-                        else:
-                            # Set the reference ring and its number
-                            reference_ring = ring
-                            reference_num = ring_num
-                except ValueError as e:
-                    print(f"Error: Unable to convert ring number to integer: {e}")
-                    continue
-                except Exception as e:
-                    print(f"An unexpected error occurred: {e}")
-                    continue
+                # Update current record with the cumulative drill rings sum
+                sched.sum_drill_rings_from_prev = cumulative_drill_rings
+                sched.save()
 
-
-    def get_last_ring_in_direction(self, queryset, direction):
-        baf = BlockAdjacencyFunctions()
-        last_ring = None
-        max_distance = 0
-        for ring in queryset:
-            if not last_ring:
-                last_ring = ring
-            elif baf.determine_direction(last_ring, ring) == direction:
-                last_ring = ring
-
-        return last_ring
-                        
-
-
-    def get_farthest_ring(self, these_rings, those_rings):
-        """
-        Input: ProdRing querysets
-        Output: FlowConcept block
-        """
-        if not these_rings.exists() or not those_rings.exists():
-            return None
-
-        this_ring = these_rings.first()
-        baf = BlockAdjacencyFunctions()
-        farthest_ring = None
-        max_distance = 0
-        for ring in those_rings:
-            distance = baf.get_dist_to_block(this_ring, ring)
-            if distance > max_distance:
-                max_distance = distance
-                farthest_ring = ring
-        return farthest_ring.concept_ring if farthest_ring else None
-
-    def get_closest_ring(self, these_rings, those_rings):
-        """
-        Input: ProdRing querysets
-        Output: FlowConcept block
-        """
-        if not these_rings.exists() or not those_rings.exists():
-            return None
-
-        this_ring = these_rings.first()
-        baf = BlockAdjacencyFunctions()
-        closest_ring = None
-        min_distance = 10000
-        for ring in those_rings:
-            distance = baf.get_dist_to_block(this_ring, ring)
-            if distance < min_distance:
-                max_distance = distance
-                closest_ring = ring
-        return closest_ring.concept_ring if closest_ring else None
-
-    def marry_designed_rings(self):
-        pass
-
-    def direction_use_adjacent_dir(self, sched_sim):
-        current_block = sched_sim.bogging_block
-        adjacent_blocks = pcm.BlockAdjacency.objects.filter(
-            block=current_block)
-        adj_same_drive = [
-            (block.adjacent_block, block.direction)
-            for block in adjacent_blocks
-            if block.adjacent_block.description == current_block.description]
-        for adj_block in adj_same_drive:
-            adj = m.SchedSim.objects.filter(
-                scenario=self.scenario, blastsolids_id=adj_block.blastsolids_id)
-            if adj:
-                if adj.mining_direction:
-                    return adj.mining_direction
-        return None
+                # Set the current schedule date as previous for the next iteration
+                previous_schedule_date = sched.start_date

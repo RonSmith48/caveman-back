@@ -189,26 +189,32 @@ class BlockAdjacencyFunctions():
                 return adjacency.adjacent_block
         return None
     
+        
     def step_dist(self, this_block, mining_direction, distance):
-        candidates = []
+        closest_candidate = None
+        farthest_candidate = None
+        farthest_distance = 0
+        
         drive_name = this_block.description
         blocks_in_drive = m.FlowModelConceptRing.objects.filter(description=drive_name)
+        
         for block in blocks_in_drive:
-            if this_block != block:
-                if self.is_in_general_mining_direction(this_block, block, mining_direction):
-                    dist = self.get_dist_to_block(this_block, block)
-                    candidates.append({dist:block})
-        if candidates:
-            sel_block = None
-            candidates.sort(key=lambda x: x[0])
-            for dist, block in candidates:
-                if dist < distance:
-                    sel_block = block
-                else:
-                    return block
-            return sel_block
-        else:
-            return None
+            if this_block != block and self.is_in_general_mining_direction(this_block, block, mining_direction):
+                dist = self.get_dist_to_block(this_block, block)
+                
+                # Check if this is the closest block beyond the distance threshold
+                if dist > distance:
+                    if closest_candidate is None or dist < self.get_dist_to_block(this_block, closest_candidate):
+                        closest_candidate = block
+
+                # Track the farthest block within the threshold as a fallback
+                if dist < distance and dist > farthest_distance:
+                    farthest_distance = dist
+                    farthest_candidate = block
+        
+        # Return the closest candidate beyond the threshold if found, otherwise return the farthest within threshold
+        return closest_candidate if closest_candidate else farthest_candidate
+
 
 
     def get_last_block_in_set(self, queryset, mining_direction):
@@ -225,7 +231,7 @@ class BlockAdjacencyFunctions():
     
     def get_last_block_in_drive(self, drive_name, mining_direction):
         queryset = m.FlowModelConceptRing.objects.filter(description=drive_name)
-        last_block = self.get_last_block_in_set(self, queryset, mining_direction)
+        last_block = self.get_last_block_in_set(queryset, mining_direction)
         return last_block
     
 
