@@ -63,8 +63,11 @@ class SchedSim(models.Model):
     start_date = models.DateField(blank=True, null=True)
     finish_date = models.DateField(blank=True, null=True)
     sequence = models.IntegerField(blank=True, null=True)
-    mining_direction = models.CharField(max_length=2, blank=True, null=True)
     json = JSONField(blank=True, null=True)
     level = models.SmallIntegerField()
     description = models.CharField(max_length=50, blank=True, null=True)
+
+
+
+
 

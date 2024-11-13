@@ -262,3 +262,13 @@ class BlockAdjacencyFunctions():
         # Return the adjacent block if found, otherwise return None
         return adjacency.adjacent_block if adjacency else None
 
+    def get_farthest_block(self, this_block, those_blocks):
+        baf = BlockAdjacencyFunctions()
+        farthest_block = None
+        max_distance = 0
+        for block in those_blocks:
+            distance = baf.get_dist_to_block(this_block, block)
+            if distance > max_distance:
+                max_distance = distance
+                farthest_block = block
+        return farthest_block

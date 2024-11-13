@@ -31,6 +31,21 @@ class BlockAdjacency(models.Model):
         ('SW', 'Southwest')
     ])
 
-    class Meta:
-        unique_together = ('block', 'direction')
-
+class MiningDirection(models.Model):
+    description = models.CharField(max_length=50, blank=True, null=True)
+    alias = models.CharField(max_length=50, blank=True, null=True)
+    mining_direction = models.CharField(max_length=2, blank=True, null=True)
+    first_block = models.ForeignKey(
+        FlowModelConceptRing,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='dir_first_block'
+    )
+    last_block = models.ForeignKey(
+        FlowModelConceptRing,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='dir_last_block'
+    )
