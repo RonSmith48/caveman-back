@@ -147,32 +147,16 @@ class BlockAdjacencyFunctions():
         if not blocks.exists():
             return None
 
-        reference_block = blocks.first()
-
         opposite_direction = self.get_opposite_direction(mining_direction)
 
-        farthest_block = None
-        max_distance = 0
+        return self.get_last_block_in_set(blocks, opposite_direction)
 
-        for block in blocks:
-            if block != reference_block:
-
-                direction = self.determine_direction(reference_block, block)
-
-                if direction == opposite_direction:
-                    distance = self.get_dist_to_block(reference_block, block)
-                    if distance > max_distance:
-                        max_distance = distance
-                        farthest_block = block
-
-        return farthest_block
-    
     def step_next_block(self, this_block, mining_direction):
         '''
         Takes a step in the mining_direction.
         Will check general direction for blocks in the same drive
         Returns next block or None.
-        '''       
+        '''
 
         this_block_desc = this_block.description
         tolerated_directions = self.dir_tolerance.get(mining_direction, [])
@@ -186,36 +170,35 @@ class BlockAdjacencyFunctions():
         for adjacency in next_block_adjacency:
             # Ensure the adjacent block's description matches the current block's drive
             if adjacency.adjacent_block.description == this_block_desc:
+                print("step", adjacency.direction)  # =========
                 return adjacency.adjacent_block
         return None
-    
-        
+
     def step_dist(self, this_block, mining_direction, distance):
-        closest_candidate = None
-        farthest_candidate = None
-        farthest_distance = 0
-        
+        last_under_dist = None
+        last_dist_under_dist = 0
+        first_over_dist = None
+        first_dist_over_dist = 10000
+
         drive_name = this_block.description
-        blocks_in_drive = m.FlowModelConceptRing.objects.filter(description=drive_name)
-        
+        blocks_in_drive = m.FlowModelConceptRing.objects.filter(
+            description=drive_name)
+
         for block in blocks_in_drive:
             if this_block != block and self.is_in_general_mining_direction(this_block, block, mining_direction):
                 dist = self.get_dist_to_block(this_block, block)
-                
+
                 # Check if this is the closest block beyond the distance threshold
-                if dist > distance:
-                    if closest_candidate is None or dist < self.get_dist_to_block(this_block, closest_candidate):
-                        closest_candidate = block
+                if dist > distance and dist < first_dist_over_dist:
+                    first_over_dist = block
+                    first_dist_over_dist = dist
 
                 # Track the farthest block within the threshold as a fallback
-                if dist < distance and dist > farthest_distance:
-                    farthest_distance = dist
-                    farthest_candidate = block
-        
-        # Return the closest candidate beyond the threshold if found, otherwise return the farthest within threshold
-        return closest_candidate if closest_candidate else farthest_candidate
+                if dist < distance and dist > last_dist_under_dist:
+                    last_dist_under_dist = dist
+                    last_under_dist = block
 
-
+        return first_over_dist if first_over_dist else last_under_dist
 
     def get_last_block_in_set(self, queryset, mining_direction):
         reference_block = None
@@ -226,14 +209,14 @@ class BlockAdjacencyFunctions():
                     reference_block = block
             else:
                 reference_block = block
-        
+
         return reference_block
-    
+
     def get_last_block_in_drive(self, drive_name, mining_direction):
-        queryset = m.FlowModelConceptRing.objects.filter(description=drive_name)
+        queryset = m.FlowModelConceptRing.objects.filter(
+            description=drive_name)
         last_block = self.get_last_block_in_set(queryset, mining_direction)
         return last_block
-    
 
     def is_in_general_mining_direction(self, this_block, that_block, mining_direction):
         direction = self.determine_direction(this_block, that_block)
@@ -247,11 +230,13 @@ class BlockAdjacencyFunctions():
         Input: A concept block
         Output: A list of adjacent drives names to the given block
         '''
-        adjacent_blocks = m.BlockAdjacency.objects.filter(block=block).exclude(adjacent_block__description=block.description)
-        distinct_descriptions = adjacent_blocks.values_list('adjacent_block__description', flat=True).distinct()
-        
+        adjacent_blocks = m.BlockAdjacency.objects.filter(
+            block=block).exclude(adjacent_block__description=block.description)
+        distinct_descriptions = adjacent_blocks.values_list(
+            'adjacent_block__description', flat=True).distinct()
+
         return list(distinct_descriptions)
-    
+
     def get_block_from_adj_named_od(self, this_block, that_drive):
         # Filter BlockAdjacency to find the record where 'this_block' has an adjacent block with description 'that_drive'
         adjacency = m.BlockAdjacency.objects.filter(

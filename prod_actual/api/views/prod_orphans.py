@@ -73,9 +73,12 @@ class ProdOrphans():
                 closest_ring = candidates.order_by('distance').first()
 
                 if closest_ring.distance <= self.threshold_dist:
+                    design_alias = str(orphan.level) + "_" + orphan.oredrive
                     matches += 1
                     orphan.concept_ring = closest_ring
                     orphan.save()
+                    closest_ring.alias = design_alias
+                    closest_ring.save()
 
         updated_orphans = self.store_orphan_count()
 
