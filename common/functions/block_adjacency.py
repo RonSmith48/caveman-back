@@ -170,7 +170,6 @@ class BlockAdjacencyFunctions():
         for adjacency in next_block_adjacency:
             # Ensure the adjacent block's description matches the current block's drive
             if adjacency.adjacent_block.description == this_block_desc:
-                print("step", adjacency.direction)  # =========
                 return adjacency.adjacent_block
         return None
 
