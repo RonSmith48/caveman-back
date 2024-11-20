@@ -15,7 +15,7 @@ from time import strftime
 from django.utils import timezone
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.db import transaction
-from django.db.models import F, Q, ExpressionWrapper
+from django.db.models import Sum, F, Q, ExpressionWrapper
 from django.db.models.functions import Abs, ExtractMonth, ExtractYear
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -74,9 +74,12 @@ class ScheduleFileHandler():
         # counting drill mtrs / rings
         self.last_designed_block = None
         self.is_designed = False
+        self.reporting_interval = 'monthly'
+        self.filename = 'schedule.csv'
 
     def handle_schedule_file(self, request, file, scenario_name):
         user = request.user
+
 
         scenario = m.Scenario.objects.create(
             name=scenario_name,
@@ -100,7 +103,7 @@ class ScheduleFileHandler():
         if self.error_msg:
             return {'msg': {'body': self.error_msg, 'type': 'error'}}
 
-        rows_processed = 'All'
+        #rows_processed = 'All'
         msg = f'{rows_processed} rows processed successfully'
 
         return {'msg': {'body': msg, 'type': 'success'}}
@@ -205,6 +208,8 @@ class ScheduleFileHandler():
         if self.error_msg:
             print("error", self.error_msg)
             return
+        
+        self.generate_schedule_csv()
 
     def determine_mining_direction(self, concept_ring):
         # if there is an alias, try to use that first
@@ -536,9 +541,7 @@ class ScheduleFileHandler():
 
         # do sched item counts
         current_block = start_block
-        # ========
-        print("dist between", baf.get_dist_to_block(current_block, sched_item.last_drill_block),
-              baf.determine_direction(current_block, sched_item.last_drill_block))
+
         is_correct_dir = baf.is_in_general_mining_direction(
             current_block, sched_item.last_drill_block, self.mining_direction)
         if is_correct_dir:
@@ -573,6 +576,100 @@ class ScheduleFileHandler():
                 sched.last_drill_block, self.last_designed_block, self.mining_direction))
         else:
             self.is_designed = False
+
+    # =============== REPORTING ===================
+
+    def generate_schedule_csv(self):
+        
+        queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
+
+        data = queryset.values('description', 'start_date__year', 'start_date__month') \
+                    .annotate(
+                        total_rings=Sum('sum_drill_rings_from_prev'),
+                        total_mtrs=Sum('sum_drill_mtrs_from_prev')
+                    ) \
+                    .order_by('description', 'start_date__year', 'start_date__month')
+
+        # Organize data by description and months
+        descriptions = {}
+        for entry in data:
+            desc = entry['description']
+            month = datetime(entry['start_date__year'], entry['start_date__month'], 1).strftime('%b %Y')
+            if desc not in descriptions:
+                descriptions[desc] = {}
+            descriptions[desc][month] = {
+                'rings': entry['total_rings'] or 0,
+                'mtrs': entry['total_mtrs'] or 0,
+            }
+
+        # Get all unique months across data and sort them chronologically
+        months = sorted(
+            {datetime.strptime(m, '%b %Y') for desc_data in descriptions.values() for m in desc_data.keys()}
+        )
+        months = [month.strftime('%b %Y') for month in months]
+
+        # Write to CSV
+        with open(self.filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Header rows
+            writer.writerow(['Description'] + [month for month in months for _ in range(2)])
+            writer.writerow([''] + [col for month in months for col in ('Rings', 'Meters')])
+
+            # Data rows
+            for desc, month_data in descriptions.items():
+                row = [desc]
+                for month in months:
+                    if month in month_data:
+                        row.append(month_data[month]['rings'])
+                        row.append(month_data[month]['mtrs'])
+                    else:
+                        row.extend([0, 0])  # Fill with zeros if no data
+                writer.writerow(row)
+
+        """ # Prepare monthly aggregation
+        data = queryset.values('description', 'start_date__year', 'start_date__month') \
+                    .annotate(
+                        total_rings=Sum('sum_drill_rings_from_prev'),
+                        total_mtrs=Sum('sum_drill_mtrs_from_prev')
+                    ) \
+                    .order_by('description', 'start_date__year', 'start_date__month')
+
+        # Organize data by description and months
+        descriptions = {}
+        for entry in data:
+            desc = entry['description']
+            month = datetime(entry['start_date__year'], entry['start_date__month'], 1).strftime('%b %Y')
+            if desc not in descriptions:
+                descriptions[desc] = {}
+            descriptions[desc][month] = {
+                'rings': entry['total_rings'] or 0,
+                'mtrs': entry['total_mtrs'] or 0,
+            }
+
+        # Get all months across data
+        months = sorted({m for desc_data in descriptions.values() for m in desc_data.keys()})
+
+        # Write to CSV
+        with open(self.filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Header rows
+            writer.writerow(['Description'] + [month for month in months for _ in range(2)])
+            writer.writerow([''] + [col for month in months for col in ('Rings', 'Meters')])
+
+            # Data rows
+            for desc, month_data in descriptions.items():
+                row = [desc]
+                for month in months:
+                    if month in month_data:
+                        row.append(month_data[month]['rings'])
+                        row.append(month_data[month]['mtrs'])
+                    else:
+                        row.extend([0, 0])  # Fill with zeros if no data
+                writer.writerow(row) """
+
+    # ================ TESTING ====================
 
     def test_drive_seq(self):
         baf = BlockAdjacencyFunctions()
