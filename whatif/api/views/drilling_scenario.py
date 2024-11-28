@@ -24,6 +24,7 @@ from copy import deepcopy
 
 
 import csv
+import calendar
 import time
 import logging
 import pandas as pd
@@ -76,6 +77,7 @@ class ScheduleFileHandler():
         self.is_designed = False
         self.reporting_interval = 'monthly'
         self.filename = 'schedule.csv'
+        self.split_month = False
 
     def handle_schedule_file(self, request, file, scenario_name):
         user = request.user
@@ -491,7 +493,6 @@ class ScheduleFileHandler():
             'description', flat=True).distinct()
 
         for drive in drives:
-            print("Working on", drive)  # ===========
             drive_schedule = m.SchedSim.objects.filter(
                 scenario=self.scenario, description=drive).order_by('start_date')
             # set mining direction
@@ -579,9 +580,71 @@ class ScheduleFileHandler():
 
     # =============== REPORTING ===================
 
+
     def generate_schedule_csv(self):
+        queryset = m.SchedSim.objects.filter(scenario=self.scenario, start_date__isnull=False)
+
+        # Prepare data aggregation
+        data = queryset.values('description', 'start_date', 'start_date__year', 'start_date__month', 'start_date__day') \
+                    .annotate(
+                        total_rings=Sum('sum_drill_rings_from_prev'),
+                        total_mtrs=Sum('sum_drill_mtrs_from_prev')
+                    ) \
+                    .order_by('description', 'start_date__year', 'start_date__month', 'start_date__day')
+
+        # Organize data by description and periods (months or half-months)
+        descriptions = {}
+        for entry in data:
+            desc = entry['description']
+            year = entry['start_date__year']
+            month = entry['start_date__month']
+            day = entry['start_date__day']
+
+            # Determine the period based on split_month option
+            if self.split_month:
+                if day <= 15:
+                    period = f"{datetime(year, month, 1).strftime('%b %Y')} (1-15)"
+                else:
+                    period = f"{datetime(year, month, 16).strftime('%b %Y')} (16-{calendar.monthrange(year, month)[1]})"
+            else:
+                period = datetime(year, month, 1).strftime('%b %Y')
+
+            if desc not in descriptions:
+                descriptions[desc] = {}
+            if period not in descriptions[desc]:
+                descriptions[desc][period] = {'rings': 0, 'mtrs': 0}
+
+            descriptions[desc][period]['rings'] += entry['total_rings'] or 0
+            descriptions[desc][period]['mtrs'] += entry['total_mtrs'] or 0
+
+        # Get all unique periods and sort them chronologically
+        periods = sorted(
+            {period for desc_data in descriptions.values() for period in desc_data.keys()},
+            key=lambda x: datetime.strptime(x.split(" ")[0], '%b').replace(year=int(x.split(" ")[1].split("(")[0]))
+        )
+
+        # Write to CSV
+        with open(self.filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+
+            # Header rows
+            writer.writerow(['Description'] + [period for period in periods for _ in range(2)])
+            writer.writerow([''] + [col for period in periods for col in ('Rings', 'Meters')])
+
+            # Data rows
+            for desc, period_data in descriptions.items():
+                row = [desc]
+                for period in periods:
+                    if period in period_data:
+                        row.append(period_data[period]['rings'])
+                        row.append(period_data[period]['mtrs'])
+                    else:
+                        row.extend([0, 0])  # Fill with zeros if no data
+                writer.writerow(row)
+
+
         
-        queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
+        """  queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
 
         data = queryset.values('description', 'start_date__year', 'start_date__month') \
                     .annotate(
@@ -625,49 +688,8 @@ class ScheduleFileHandler():
                         row.append(month_data[month]['mtrs'])
                     else:
                         row.extend([0, 0])  # Fill with zeros if no data
-                writer.writerow(row)
-
-        """ # Prepare monthly aggregation
-        data = queryset.values('description', 'start_date__year', 'start_date__month') \
-                    .annotate(
-                        total_rings=Sum('sum_drill_rings_from_prev'),
-                        total_mtrs=Sum('sum_drill_mtrs_from_prev')
-                    ) \
-                    .order_by('description', 'start_date__year', 'start_date__month')
-
-        # Organize data by description and months
-        descriptions = {}
-        for entry in data:
-            desc = entry['description']
-            month = datetime(entry['start_date__year'], entry['start_date__month'], 1).strftime('%b %Y')
-            if desc not in descriptions:
-                descriptions[desc] = {}
-            descriptions[desc][month] = {
-                'rings': entry['total_rings'] or 0,
-                'mtrs': entry['total_mtrs'] or 0,
-            }
-
-        # Get all months across data
-        months = sorted({m for desc_data in descriptions.values() for m in desc_data.keys()})
-
-        # Write to CSV
-        with open(self.filename, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            
-            # Header rows
-            writer.writerow(['Description'] + [month for month in months for _ in range(2)])
-            writer.writerow([''] + [col for month in months for col in ('Rings', 'Meters')])
-
-            # Data rows
-            for desc, month_data in descriptions.items():
-                row = [desc]
-                for month in months:
-                    if month in month_data:
-                        row.append(month_data[month]['rings'])
-                        row.append(month_data[month]['mtrs'])
-                    else:
-                        row.extend([0, 0])  # Fill with zeros if no data
                 writer.writerow(row) """
+
 
     # ================ TESTING ====================
 
