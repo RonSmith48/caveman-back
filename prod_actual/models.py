@@ -24,7 +24,7 @@ class ProductionRing(Location):
     holes = models.SmallIntegerField()
     diameters = models.CharField(max_length=30, blank=True, null=True)
     drill_meters = models.DecimalField(
-        max_digits=8, decimal_places=4, null=True)
+        max_digits=8, decimal_places=4, blank=True, null=True)
     drill_look_direction = models.CharField(
         max_length=10, blank=True, null=True)
     designed_to_suit = models.CharField(
@@ -160,7 +160,7 @@ class RingStateChange(models.Model):
     shkey = models.CharField(max_length=20, blank=True, null=True)
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, blank=True, null=True)
-    # This is a secondary state, a ring can have more than 1 state
+    # This is a secondary state, a tag
     state = models.ForeignKey(RingState, on_delete=models.CASCADE)
     comment = models.TextField(blank=True, null=True)
     operation_complete = models.BooleanField(default=True)

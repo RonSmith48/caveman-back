@@ -65,11 +65,11 @@ class BoggingMovementsView(APIView):
             return Response({'msg': {'body': 'Record not found', 'type': 'error'}}, status=status.HTTP_404_NOT_FOUND)
 
 
-class DesignedDrivesView(APIView):
+class DrillDrivesView(APIView):
     def get(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-        rings = bdcf.get_designed_drives(request)
-        return Response(rings, status=status.HTTP_200_OK)
+        drives = bdcf.get_drill_drives(request)
+        return Response(drives, status=status.HTTP_200_OK)
 
 
 class DesignedRingsListView(APIView):
@@ -79,18 +79,63 @@ class DesignedRingsListView(APIView):
         return Response(drilled_list, status=status.HTTP_200_OK)
 
 
-class DrilledRingsListView(APIView):
+class DrillEntryRingsListView(APIView):
     def get(self, request, lvl_od, *args, **kwargs):
         bdcf = BDCFRings()
+        drilled_rings = bdcf.get_drilled_rings(request, lvl_od)
         drilled_list = bdcf.get_drilled_rings_list(request, lvl_od)
-        return Response(drilled_list, status=status.HTTP_200_OK)
+        designed_list = bdcf.get_designed_rings_list(request, lvl_od)
+        ring_num_dropdown = {'drilled_rings': drilled_rings,
+                             'drilled': drilled_list,
+                             'designed': designed_list}
+
+        return Response(ring_num_dropdown, status=status.HTTP_200_OK)
 
 
-class DrilledRingsView(APIView):
-    def get(self, request, lvl_od, *args, **kwargs):
+class DrillEntryView(APIView):
+    def get(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-        rings = bdcf.get_drilled_rings(request, lvl_od)
-        return Response(rings, status=status.HTTP_200_OK)
+
+        drives_list = bdcf.get_drill_drives(request)
+        drives = {'drilled_list': drives_list['drilled_drives'],
+                  'designed_list': drives_list['designed_drives']}
+        return Response(drives, status=status.HTTP_200_OK)
+
+    def post(self, request, *args, **kwargs):
+        data = request.data
+        print(data)
+        location_id = data.get('location_id')
+        if not location_id:
+            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            ring = m.ProductionRing.objects.get(location_id=location_id)
+
+            drilled_meters = data.get('drilled_mtrs')
+            ring.drilled_meters = None if drilled_meters == "" else drilled_meters
+
+            ring.is_redrilled = data.get('redrill', ring.is_redrilled)
+            ring.has_lost_rods = data.get('lost_rods', ring.has_lost_rods)
+            ring.has_bg_report = data.get('has_bg', ring.has_bg_report)
+            ring.is_making_water = data.get(
+                'making_water', ring.is_making_water)
+            if not data.get('half_drilled'):
+                ring.drill_complete_date = data.get(
+                    'date', ring.drill_complete_date)
+                ring.status = data.get('status', ring.status)
+
+            # Save the updated model instance
+            ring.save()
+
+            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
+
+        except m.ProductionRing.DoesNotExist:
+            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            # Handle unexpected errors
+            print("error", str(e))
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ChargedRingsView(APIView):
@@ -209,8 +254,8 @@ class BDCFRings():
             print(e)
             return {'type': 'error', 'body': 'An error occurred', 'detail': {str(e)}}, status.HTTP_500_INTERNAL_SERVER_ERROR
 
-    def get_designed_drives(self, request):
-        designed_rings = m.ProductionRing.objects.filter(
+    def get_drill_drives(self, request):
+        designed_drives = m.ProductionRing.objects.filter(
             is_active=True,
             status='Designed'
         ).annotate(
@@ -218,8 +263,18 @@ class BDCFRings():
                 Cast(F('level'), CharField()), Value('_'), F('oredrive'))
         ).values('level_oredrive').distinct().order_by('level_oredrive')
 
-        distinct_list = list(designed_rings)
-        return distinct_list
+        drilled_drives = m.ProductionRing.objects.filter(
+            is_active=True,
+            status='Drilled'
+        ).annotate(
+            level_oredrive=Concat(
+                Cast(F('level'), CharField()), Value('_'), F('oredrive'))
+        ).values('level_oredrive').distinct().order_by('level_oredrive')
+
+        distinct_designed = list(designed_drives)
+        distinct_drilled = list(drilled_drives)
+
+        return {'designed_drives': distinct_designed, 'drilled_drives': distinct_drilled}
 
     def get_designed_rings_list(self, request, lvl_od):
         level, oredrive = lvl_od.split('_', 1)
@@ -246,6 +301,8 @@ class BDCFRings():
         return list(designed_rings)
 
     def get_drilled_rings(self, request, lvl_od):
+        drilled_rings = []
+
         level, oredrive = lvl_od.split('_', 1)
         level = int(level)
         designed_rings = m.ProductionRing.objects.filter(
@@ -253,9 +310,22 @@ class BDCFRings():
             level=level,
             oredrive=oredrive,
             status='Drilled'
-        ).order_by('ring_number_txt').values('ring_number_txt', 'location_id')
+        ).order_by('ring_number_txt')
 
-        return list(designed_rings)
+        for ring in designed_rings:
+
+            ring_details = {'location_id': ring.location_id,
+                            'drill_complete_date': ring.drill_complete_date,
+                            'ring_number_txt': ring.ring_number_txt,
+                            'is_making_water': ring.is_making_water,
+                            'is_redrilled': ring.is_redrilled,
+                            'has_bg_report': ring.has_bg_report,
+                            'has_blocked_holes': ring.has_blocked_holes,
+                            'has_lost_rods': ring.has_lost_rods
+                            }
+            drilled_rings.append(ring_details)
+
+        return drilled_rings
 
     def get_charged_rings(self, request):
         pass
