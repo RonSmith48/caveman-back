@@ -65,26 +65,12 @@ class BoggingMovementsView(APIView):
             return Response({'msg': {'body': 'Record not found', 'type': 'error'}}, status=status.HTTP_404_NOT_FOUND)
 
 
-class DrillDrivesView(APIView):
-    def get(self, request, *args, **kwargs):
-        bdcf = BDCFRings()
-        drives = bdcf.get_drill_drives(request)
-        return Response(drives, status=status.HTTP_200_OK)
-
-
-class DesignedRingsListView(APIView):
-    def get(self, request, lvl_od, *args, **kwargs):
-        bdcf = BDCFRings()
-        drilled_list = bdcf.get_designed_rings_list(request, lvl_od)
-        return Response(drilled_list, status=status.HTTP_200_OK)
-
-
 class DrillEntryRingsListView(APIView):
     def get(self, request, lvl_od, *args, **kwargs):
         bdcf = BDCFRings()
-        drilled_rings = bdcf.get_drilled_rings(request, lvl_od)
-        drilled_list = bdcf.get_drilled_rings_list(request, lvl_od)
-        designed_list = bdcf.get_designed_rings_list(request, lvl_od)
+        drilled_rings = bdcf.get_drilled_rings(lvl_od)
+        drilled_list = bdcf.get_rings_of_status_list(lvl_od, 'Drilled')
+        designed_list = bdcf.get_rings_of_status_list(lvl_od, 'Designed')
         ring_num_dropdown = {'drilled_rings': drilled_rings,
                              'drilled': drilled_list,
                              'designed': designed_list}
@@ -95,15 +81,14 @@ class DrillEntryRingsListView(APIView):
 class DrillEntryView(APIView):
     def get(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-
-        drives_list = bdcf.get_drill_drives(request)
-        drives = {'drilled_list': drives_list['drilled_drives'],
-                  'designed_list': drives_list['designed_drives']}
+        designed_drives_list = bdcf.get_distict_drives_list('Designed')
+        drilled_drives_list = bdcf.get_distict_drives_list('Drilled')
+        drives = {'designed_list': designed_drives_list,
+                  'drilled_list': drilled_drives_list}
         return Response(drives, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
         data = request.data
-        print(data)
         location_id = data.get('location_id')
         if not location_id:
             return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
@@ -138,10 +123,34 @@ class DrillEntryView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class ChargedRingsView(APIView):
+class ChargeEntryView(APIView):
     def get(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-        rings = bdcf.get_charged_rings(request)
+        rings = bdcf.get_blocked()
+        half = bdcf.get_half_charged()
+        drives = bdcf.get_distict_drives_list('Drilled')
+        data = {'blocked_holes': rings, 'incomplete': half,
+                'drilled_drives_list': drives}
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class ChargeEntryRingsListView(APIView):
+    def get(self, request, lvl_od, *args, **kwargs):
+        bdcf = BDCFRings()
+        drilled_rings = bdcf.get_drilled_rings(lvl_od)
+        drilled_list = bdcf.get_rings_of_status_list(lvl_od, 'Drilled')
+        charged_list = bdcf.get_rings_of_status_list(lvl_od, 'Charged')
+        ring_num_dropdown = {'drilled_rings': drilled_rings,
+                             'drilled': drilled_list,
+                             'charged': charged_list}
+
+        return Response(ring_num_dropdown, status=status.HTTP_200_OK)
+
+
+class FireEntryView(APIView):
+    def get(self, request, *args, **kwargs):
+        bdcf = BDCFRings()
+        rings = bdcf.get_blocked()
         return Response(rings, status=status.HTTP_200_OK)
 
 
@@ -254,53 +263,30 @@ class BDCFRings():
             print(e)
             return {'type': 'error', 'body': 'An error occurred', 'detail': {str(e)}}, status.HTTP_500_INTERNAL_SERVER_ERROR
 
-    def get_drill_drives(self, request):
-        designed_drives = m.ProductionRing.objects.filter(
+    def get_distict_drives_list(self, status):
+        drives = m.ProductionRing.objects.filter(
             is_active=True,
-            status='Designed'
+            status=status
         ).annotate(
             level_oredrive=Concat(
                 Cast(F('level'), CharField()), Value('_'), F('oredrive'))
         ).values('level_oredrive').distinct().order_by('level_oredrive')
 
-        drilled_drives = m.ProductionRing.objects.filter(
-            is_active=True,
-            status='Drilled'
-        ).annotate(
-            level_oredrive=Concat(
-                Cast(F('level'), CharField()), Value('_'), F('oredrive'))
-        ).values('level_oredrive').distinct().order_by('level_oredrive')
+        return list(drives)
 
-        distinct_designed = list(designed_drives)
-        distinct_drilled = list(drilled_drives)
-
-        return {'designed_drives': distinct_designed, 'drilled_drives': distinct_drilled}
-
-    def get_designed_rings_list(self, request, lvl_od):
+    def get_rings_of_status_list(self, lvl_od, status):
         level, oredrive = lvl_od.split('_', 1)
         level = int(level)
-        designed_rings = m.ProductionRing.objects.filter(
+        rings = m.ProductionRing.objects.filter(
             is_active=True,
             level=level,
             oredrive=oredrive,
-            status='Designed'
+            status=status
         ).order_by('ring_number_txt').values('ring_number_txt', 'location_id')
 
-        return list(designed_rings)
+        return list(rings)
 
-    def get_drilled_rings_list(self, request, lvl_od):
-        level, oredrive = lvl_od.split('_', 1)
-        level = int(level)
-        designed_rings = m.ProductionRing.objects.filter(
-            is_active=True,
-            level=level,
-            oredrive=oredrive,
-            status='Drilled'
-        ).order_by('ring_number_txt').values('ring_number_txt', 'location_id')
-
-        return list(designed_rings)
-
-    def get_drilled_rings(self, request, lvl_od):
+    def get_drilled_rings(self, lvl_od):
         drilled_rings = []
 
         level, oredrive = lvl_od.split('_', 1)
@@ -327,5 +313,65 @@ class BDCFRings():
 
         return drilled_rings
 
-    def get_charged_rings(self, request):
-        pass
+    def get_charged_rings(self, lvl_od):
+        charged_rings = []
+
+        level, oredrive = lvl_od.split('_', 1)
+        level = int(level)
+        charged_rings = m.ProductionRing.objects.filter(
+            is_active=True,
+            level=level,
+            oredrive=oredrive,
+            status='Charged'
+        ).order_by('ring_number_txt')
+
+        for ring in charged_rings:
+
+            ring_details = {'location_id': ring.location_id,
+                            'charge_date': ring.charge_date,
+                            'ring_number_txt': ring.ring_number_txt,
+                            'detonator': ring.detonator_actual
+                            }
+            charged_rings.append(ring_details)
+
+        return charged_rings
+
+    def get_blocked(self):
+        rings = m.ProductionRing.objects.filter(
+            is_active=True,
+            has_blocked_holes=True
+        )
+
+        rings = []
+        for r in rings:
+            ring = {}
+            ring['location_id'] = r.location_id
+            ring['level'] = r.level
+            ring['oredrive'] = r.oredrive
+            ring['ring_number_txt'] = r.ring_number_txt
+            ring['has_blocked_holes'] = r.has_blocked_holes
+
+            rings.append(ring)
+
+        return rings
+
+    def get_half_charged(self):
+        rings = []
+        ring_states = m.RingStateChange.objects.filter(
+            is_active=True, state__state='Charge Incomplete')
+        for r in ring_states:
+            ring = {}
+            ring['location_id'] = r.prod_ring.location_id
+            ring['level'] = r.prod_ring.level
+            ring['oredrive'] = r.prod_ring.oredrive
+            ring['ring_number_txt'] = r.prod_ring.ring_number_txt
+            ring['has_blocked_holes'] = r.prod_ring.has_blocked_holes
+            ring['timestamp'] = r.timestamp
+            ring['user_email'] = r.user.email
+            ring['state'] = r.state
+            ring['comment'] = r.comment
+            ring['operation_complete'] = r.operation_complete
+            ring['holes_completed'] = r.holes_completed
+
+            rings.append(ring)
+        return rings

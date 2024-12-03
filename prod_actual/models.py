@@ -155,7 +155,7 @@ class RingState(models.Model):
 class RingStateChange(models.Model):
     ring_state_id = models.BigAutoField(primary_key=True)
     is_active = models.BooleanField(default=True)
-    location_id = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
+    prod_ring = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True)
     shkey = models.CharField(max_length=20, blank=True, null=True)
     user = models.ForeignKey(
