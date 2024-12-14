@@ -105,8 +105,8 @@ class DrillEntryView(APIView):
             ring.is_making_water = data.get(
                 'making_water', ring.is_making_water)
             if not data.get('half_drilled'):
-                ring.drill_complete_date = data.get(
-                    'date', ring.drill_complete_date)
+                ring.drill_complete_shift = data.get(
+                    'date', ring.drill_complete_shift)
                 ring.status = data.get('status', ring.status)
 
             # Save the updated model instance
@@ -133,14 +133,46 @@ class ChargeEntryView(APIView):
                 'drilled_drives_list': drives}
         return Response(data, status=status.HTTP_200_OK)
 
+    def post(self, request, *args, **kwargs):
+        sk = Shkey()
+        data = request.data
+        location_id = data.get('location_id')
+        if not location_id:
+            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            ring = m.ProductionRing.objects.get(location_id=location_id)
+
+            d = data.get('date')
+            shift = data.get('shift')
+            ring.charge_shift = sk.generate_shkey(d, shift)
+            ring.has_blocked_holes = data.get(
+                'blocked_holes', ring.has_blocked_holes)
+            ring.status = data.get('status', ring.status)
+            ring.detonator_actual = data.get(
+                'explosive', ring.detonator_actual)
+
+            # Save the updated model instance
+            ring.save()
+
+            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
+
+        except m.ProductionRing.DoesNotExist:
+            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            # Handle unexpected errors
+            print("error", str(e))
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class ChargeEntryRingsListView(APIView):
     def get(self, request, lvl_od, *args, **kwargs):
         bdcf = BDCFRings()
-        drilled_rings = bdcf.get_drilled_rings(lvl_od)
+        charged_rings = bdcf.get_charged_rings(lvl_od)
         drilled_list = bdcf.get_rings_of_status_list(lvl_od, 'Drilled')
         charged_list = bdcf.get_rings_of_status_list(lvl_od, 'Charged')
-        ring_num_dropdown = {'drilled_rings': drilled_rings,
+        ring_num_dropdown = {'charged_rings': charged_rings,
                              'drilled': drilled_list,
                              'charged': charged_list}
 
@@ -301,7 +333,7 @@ class BDCFRings():
         for ring in designed_rings:
 
             ring_details = {'location_id': ring.location_id,
-                            'drill_complete_date': ring.drill_complete_date,
+                            'drill_complete_shift': ring.drill_complete_shift,
                             'ring_number_txt': ring.ring_number_txt,
                             'is_making_water': ring.is_making_water,
                             'is_redrilled': ring.is_redrilled,
@@ -314,7 +346,7 @@ class BDCFRings():
         return drilled_rings
 
     def get_charged_rings(self, lvl_od):
-        charged_rings = []
+        charged = []
 
         level, oredrive = lvl_od.split('_', 1)
         level = int(level)
@@ -328,13 +360,13 @@ class BDCFRings():
         for ring in charged_rings:
 
             ring_details = {'location_id': ring.location_id,
-                            'charge_date': ring.charge_date,
+                            'charge_shift': ring.charge_shift,
                             'ring_number_txt': ring.ring_number_txt,
                             'detonator': ring.detonator_actual
                             }
-            charged_rings.append(ring_details)
+            charged.append(ring_details)
 
-        return charged_rings
+        return charged
 
     def get_blocked(self):
         rings = m.ProductionRing.objects.filter(

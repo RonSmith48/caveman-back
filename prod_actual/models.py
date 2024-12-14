@@ -31,9 +31,9 @@ class ProductionRing(Location):
         max_length=30, blank=True, null=True)  # Rig: Solo or Simba
     drilled_meters = models.DecimalField(
         max_digits=7, decimal_places=4, blank=True, null=True)
-    drill_complete_date = models.CharField(
+    drill_complete_shift = models.CharField(
         max_length=10, blank=True, null=True)
-    charge_date = models.CharField(max_length=10, blank=True, null=True)
+    charge_shift = models.CharField(max_length=10, blank=True, null=True)
     detonator_designed = models.CharField(max_length=50, blank=True, null=True)
     detonator_actual = models.CharField(max_length=50, blank=True, null=True)
     designed_emulsion_kg = models.SmallIntegerField(blank=True, null=True)
@@ -43,7 +43,7 @@ class ProductionRing(Location):
     fireby_date = models.CharField(max_length=10, blank=True, null=True)
     fired_shift = models.CharField(max_length=10, blank=True, null=True)
     multi_fire_group = models.CharField(max_length=10, blank=True, null=True)
-    bog_complete = models.CharField(max_length=10, blank=True, null=True)
+    bog_complete_shift = models.CharField(max_length=10, blank=True, null=True)
     markup_for = models.CharField(max_length=50, blank=True, null=True)
     blastsolids_volume = models.DecimalField(
         max_digits=10, decimal_places=4, blank=True, null=True)
@@ -146,10 +146,11 @@ class RingComments(models.Model):
 
 
 class RingState(models.Model):
-    state = models.CharField(max_length=30)
+    pri_state = models.CharField(max_length=30)
+    sec_state = models.CharField(max_length=30, blank=True, null=True)
 
     def __str__(self):
-        return self.state
+        return self.sec_state
 
 
 class RingStateChange(models.Model):

@@ -117,9 +117,13 @@ class DupeFileHandler():
                         alias = str(level) + "_" + oredrive + \
                             "_" + ring_number_txt
 
+                        drill_shift = Shkey.generate_shkey(
+                            row["Drilling Complete Date"])
+                        charge_shift = Shkey.generate_shkey(
+                            row["Date Charge Completed"])
                         shiftfired = Shkey.generate_shkey(
                             row["Date Fired"], row["Shift Fired"])
-                        finished = self.reformat_date(row["BogComplete"])
+                        finished = Shkey.generate_shkey(row["BogComplete"])
 
                         if finished and shiftfired == '':
                             status = 'Abandoned'
@@ -149,16 +153,14 @@ class DupeFileHandler():
                             existing_record.in_flow = in_flow
                             existing_record.designed_tonnes = self.number_fix(
                                 row["Design Tonnes (100%)"])
-                            existing_record.drill_complete_date = self.reformat_date(
-                                row["Drilling Complete Date"])
-                            existing_record.charge_date = self.reformat_date(
-                                row["Date Charge Completed"])
+                            existing_record.drill_complete_shift = drill_shift
+                            existing_record.charge_shift = charge_shift
                             existing_record.fireby_date = self.reformat_date(
                                 row["FireBy"])
                             existing_record.fired_shift = shiftfired
                             existing_record.status = status
                             existing_record.multi_fire_group = row["IsMFGroup"]
-                            existing_record.bog_complete = finished
+                            existing_record.bog_complete_shift = finished
                             existing_record.x = self.number_fix(
                                 row["DesignCollarX"])
                             existing_record.y = self.number_fix(
@@ -187,10 +189,8 @@ class DupeFileHandler():
                                 in_flow=in_flow,
                                 designed_tonnes=self.number_fix(
                                     row["Design Tonnes (100%)"]),
-                                drill_complete_date=self.reformat_date(
-                                    row["Drilling Complete Date"]),
-                                charge_date=self.reformat_date(
-                                    row["Date Charge Completed"]),
+                                drill_complete_shift=drill_shift,
+                                charge_shift=charge_shift,
                                 fireby_date=self.reformat_date(row["FireBy"]),
                                 fired_shift=shiftfired,
                                 status=status,

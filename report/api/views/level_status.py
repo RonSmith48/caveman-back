@@ -135,7 +135,7 @@ class LevelStatusReport():
                     drilled.append(
                         {"ring": self.ring.ring_number_txt, "is_blocked": self.ring.has_blocked_holes})
 
-                if latest_drilled_ring is None or self.ring.drill_complete_date > latest_drilled_ring.drill_complete_date:
+                if latest_drilled_ring is None or self.ring.drill_complete_shift > latest_drilled_ring.drill_complete_shift:
                     latest_drilled_ring = self.ring
 
             elif self.ring.status == 'Charged':
@@ -222,10 +222,10 @@ class LevelStatusReport():
 
     def is_overslept_ring(self):
         # charge_date is a string in the format yyyy-mm-dd
-        if not self.ring.charge_date:
+        if not self.ring.charge_shift:
             return False
 
-        charge_date = date.fromisoformat(self.ring.charge_date)
+        charge_date = date.fromisoformat(self.ring.charge_shift)
         overslept_date = charge_date + timedelta(days=28)
 
         return date.today() > overslept_date
