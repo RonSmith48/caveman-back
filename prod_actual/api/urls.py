@@ -9,6 +9,8 @@ urlpatterns = [
     path('bdcf/bog/', bdcf.BoggingRingsView.as_view(), name='bdcf-bog'),
     path('bdcf/bog/<int:location_id>/',
          bdcf.BoggingMovementsView.as_view(), name='bdcf-bog'),
+    path('bdcf/conditions/<str:stat>/',
+         bdcf.ConditionsListView.as_view(), name='bdcf-conditions'),
     path('bdcf/drill/', bdcf.DrillEntryView.as_view(), name='bdcf-drill'),
     path('bdcf/drilled/<str:lvl_od>/',
          bdcf.DrillEntryRingsListView.as_view(), name='bdcf-drill'),

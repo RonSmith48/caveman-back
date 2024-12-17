@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from common.functions.common_methods import CommonMethods
 from common.functions.shkey import Shkey
+from common.functions.ring_state import ensure_mandatory_ring_states
 
 from datetime import timedelta, date
 
@@ -63,6 +64,14 @@ class BoggingMovementsView(APIView):
 
         except m.BoggedTonnes.DoesNotExist:
             return Response({'msg': {'body': 'Record not found', 'type': 'error'}}, status=status.HTTP_404_NOT_FOUND)
+
+
+class ConditionsListView(APIView):
+    def get(self, request, stat, *args, **kwargs):
+        bdcf = BDCFRings()
+        state_list = bdcf.get_state_list(stat)
+
+        return Response(state_list, status=status.HTTP_200_OK)
 
 
 class DrillEntryRingsListView(APIView):
@@ -134,18 +143,24 @@ class ChargeEntryView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
+        ensure_mandatory_ring_states()
         sk = Shkey()
         data = request.data
+        print('data', data)  # =========
         location_id = data.get('location_id')
         if not location_id:
             return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             ring = m.ProductionRing.objects.get(location_id=location_id)
-
             d = data.get('date')
             shift = data.get('shift')
-            ring.charge_shift = sk.generate_shkey(d, shift)
+
+            shkey = data.get('charge_shift')  # from update
+            if not shkey:  # new entry
+                shkey = sk.generate_shkey(d, shift)
+
+            ring.charge_shift = shkey
             ring.has_blocked_holes = data.get(
                 'blocked_holes', ring.has_blocked_holes)
             ring.status = data.get('status', ring.status)
@@ -154,6 +169,74 @@ class ChargeEntryView(APIView):
 
             # Save the updated model instance
             ring.save()
+
+            # status of 'Drilled' means un-charge
+            # status of 'Charged' means charge
+
+            key_states = {
+                "incomplete": {"pri_state": "Charged", "sec_state": "Incomplete"},
+                "charged_short": {"pri_state": "Charged", "sec_state": "Charged Short"},
+                "blocked_holes": {"pri_state": "Drilled", "sec_state": "Blocked Holes"},
+                "recharged": {"pri_state": "Charged", "sec_state": "Recharged Holes"},
+            }
+
+            any_state_selected = False
+
+            # Iterate through the key states and create RingStateChange entries
+            for key, state_info in key_states.items():
+                if data.get(key):  # Check if the state is `true` in the form
+                    any_state_selected = True
+                    pri_state = state_info["pri_state"]
+                    sec_state = state_info["sec_state"]
+
+                    # Find the corresponding RingState
+                    ring_state = m.RingState.objects.filter(
+                        pri_state=pri_state, sec_state=sec_state).first()
+                    if not ring_state:
+                        return Response({
+                            'msg': {
+                                'type': 'error',
+                                'body': f"RingState with pri_state '{pri_state}' and sec_state '{sec_state}' not found"
+                            }
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    # Create a new RingStateChange entry
+                    m.RingStateChange.objects.create(
+                        prod_ring=ring,
+                        state=ring_state,
+                        shkey=shkey,
+                        user=request.user if request.user.is_authenticated else None,
+                        comment=data.get('comment'),
+                        operation_complete=data.get(
+                            'operation_complete', True),
+                        mtrs_drilled=data.get('mtrs_drilled', 0),
+                        holes_completed=data.get('holes_completed'),
+                        is_active=True  # Set as active by default
+                    )
+
+            # If no states are selected, default to Charged - None
+            if not any_state_selected:
+                ring_state = m.RingState.objects.filter(
+                    pri_state=ring.status, sec_state=None).first()
+                if not ring_state:
+                    return Response({
+                        'msg': {
+                            'type': 'error',
+                            'body': "RingState with pri_state 'Charged' and sec_state 'None' not found"
+                        }
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                m.RingStateChange.objects.create(
+                    prod_ring=ring,
+                    state=ring_state,
+                    shkey=shkey,
+                    user=request.user if request.user.is_authenticated else None,
+                    comment=data.get('comment'),
+                    operation_complete=data.get('operation_complete', True),
+                    mtrs_drilled=data.get('mtrs_drilled', 0),
+                    holes_completed=data.get('holes_completed'),
+                    is_active=True  # Set as active by default
+                )
 
             return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
 
@@ -390,7 +473,7 @@ class BDCFRings():
     def get_half_charged(self):
         rings = []
         ring_states = m.RingStateChange.objects.filter(
-            is_active=True, state__state='Charge Incomplete')
+            is_active=True, state__pri_state='Charged', state__sec_state='Incomplete')
         for r in ring_states:
             ring = {}
             ring['location_id'] = r.prod_ring.location_id
@@ -407,3 +490,15 @@ class BDCFRings():
 
             rings.append(ring)
         return rings
+
+    def get_state_list(self, status):
+        # Query the database for RingState objects with the given pri_state
+        # Order them alphabetically by sec_state and exclude None values
+        sec_states = (
+            m.RingState.objects.filter(pri_state=status)
+            .exclude(sec_state__isnull=True)
+            .order_by('sec_state')
+            .values_list('sec_state', flat=True)
+        )
+
+        return list(sec_states)

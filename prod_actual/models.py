@@ -152,6 +152,33 @@ class RingState(models.Model):
     def __str__(self):
         return self.sec_state
 
+    def delete(self, *args, **kwargs):
+        # Define mandatory state combinations
+        mandatory_states = [
+            {"pri_state": "Designed", "sec_state": None},
+            {"pri_state": "Drilled", "sec_state": None},
+            {"pri_state": "Drilled", "sec_state": "Redrilled"},
+            {"pri_state": "Drilled", "sec_state": "Lost Rods"},
+            {"pri_state": "Drilled", "sec_state": "BG Reported"},
+            {"pri_state": "Drilled", "sec_state": "Making Water"},
+            {"pri_state": "Drilled", "sec_state": "Incomplete"},
+            {"pri_state": "Drilled", "sec_state": "Blocked Holes"},
+            {"pri_state": "Drilled", "sec_state": "Had Cleanout"},
+            {"pri_state": "Charged", "sec_state": None},
+            {"pri_state": "Charged", "sec_state": "Incomplete"},
+            {"pri_state": "Charged", "sec_state": "Charged Short"},
+            {"pri_state": "Charged", "sec_state": "Recharged Holes"},
+            {"pri_state": "Complete", "sec_state": None},
+            {"pri_state": "Abandoned", "sec_state": None},
+        ]
+
+        # Prevent deletion of mandatory states
+        if {"pri_state": self.pri_state, "sec_state": self.sec_state} in mandatory_states:
+            raise ValueError("Cannot delete mandatory RingState.")
+
+        # Proceed with deletion
+        super().delete(*args, **kwargs)
+
 
 class RingStateChange(models.Model):
     ring_state_id = models.BigAutoField(primary_key=True)
