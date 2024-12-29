@@ -56,7 +56,7 @@ class ConceptRingsFileHandler():
         self.read_flow_concept_file(file)
         b = BlockAdjacencyFunctions()
         b.remap_levels(self.touched_levels)
-        self.update_block_links(self)
+        self.update_block_links()
 
         if self.error_msg:
             return {'msg': self.error_msg, 'msg_type': 'error'}
