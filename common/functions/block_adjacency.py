@@ -156,6 +156,31 @@ class BlockAdjacencyFunctions():
         return self.get_last_block_in_set(blocks, opposite_direction)
 
     def step_next_block(self, this_block, mining_direction):
+        # first try this
+        next_block = self.step_using_successor_method(this_block)
+        if next_block:
+            return next_block
+        else:
+            # then try this
+            return self.step_using_mining_direction(this_block, mining_direction)
+
+    def step_using_successor_method(self, this_block):
+        '''
+        Takes a step in direction of successor
+        Returns next block or None.
+        '''
+
+        this_block_desc = this_block.description
+        successors = m.BlockLink.objects.filter(
+            block=this_block, direction='S')
+        if successors:
+            for s in successors:
+                if s.description == this_block_desc:
+                    return s
+        else:
+            return None
+
+    def step_using_mining_direction(self, this_block, mining_direction):
         '''
         Takes a step in the mining_direction.
         Will check general direction for blocks in the same drive
@@ -178,6 +203,27 @@ class BlockAdjacencyFunctions():
         return None
 
     def step_dist(self, this_block, mining_direction, distance):
+        # first try this
+        block = self.step_dist_using_successor_method(this_block, distance)
+        if block == this_block:
+            # then try this
+            block = self.step_dist_using_mining_direction(
+                this_block, mining_direction, distance)
+        return block
+
+    def step_dist_using_successor_method(self, this_block, distance):
+        dist = 0
+        final_block = this_block
+        while dist < distance:
+            next_block = self.step_using_successor_method(this_block)
+            if next_block:
+                final_block = next_block
+                dist = self.get_dist_to_block(this_block, next_block)
+            else:
+                return final_block
+        return final_block
+
+    def step_dist_using_mining_direction(self, this_block, mining_direction, distance):
         last_under_dist = None
         last_dist_under_dist = 0
         first_over_dist = None
