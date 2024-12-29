@@ -18,8 +18,10 @@ class FlowModelConceptRing(Location):
 
 
 class BlockAdjacency(models.Model):
-    block = models.ForeignKey(FlowModelConceptRing, on_delete=models.CASCADE, related_name='adjacent_blocks')
-    adjacent_block = models.ForeignKey(FlowModelConceptRing, on_delete=models.CASCADE, related_name='adjacent_to')
+    block = models.ForeignKey(
+        FlowModelConceptRing, on_delete=models.CASCADE, related_name='adjacent_blocks')
+    adjacent_block = models.ForeignKey(
+        FlowModelConceptRing, on_delete=models.CASCADE, related_name='adjacent_to')
     direction = models.CharField(max_length=2, choices=[
         ('N', 'North'),
         ('S', 'South'),
@@ -30,6 +32,7 @@ class BlockAdjacency(models.Model):
         ('SE', 'Southeast'),
         ('SW', 'Southwest')
     ])
+
 
 class MiningDirection(models.Model):
     description = models.CharField(max_length=50, blank=True, null=True)
@@ -49,3 +52,14 @@ class MiningDirection(models.Model):
         blank=True,
         related_name='dir_last_block'
     )
+
+
+class BlockLink(models.Model):
+    block = models.ForeignKey(
+        FlowModelConceptRing, on_delete=models.CASCADE, related_name='linked_block')
+    linked = models.ForeignKey(
+        FlowModelConceptRing, on_delete=models.CASCADE, related_name='linked')
+    direction = models.CharField(max_length=1, choices=[
+        ('P', 'Predecessor'),
+        ('S', 'Successor')
+    ], null=True, blank=True)

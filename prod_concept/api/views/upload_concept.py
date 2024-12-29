@@ -49,12 +49,14 @@ class ConceptRingsFileHandler():
         self.success_msg = None
         self.user = ''
         self.touched_levels = set()
+        self.succession_data = []
 
     def handle_flow_concept_file(self, request, file):
         self.user = request.user
         self.read_flow_concept_file(file)
         b = BlockAdjacencyFunctions()
         b.remap_levels(self.touched_levels)
+        self.update_block_links(self)
 
         if self.error_msg:
             return {'msg': self.error_msg, 'msg_type': 'error'}
@@ -103,6 +105,11 @@ class ConceptRingsFileHandler():
                         bs_id = row[required_columns["id"]]
                         level = self.number_fix(row[required_columns["level"]])
                         self.touched_levels.add(level)
+
+                        # Succession info collection
+                        ordering = {
+                            'id': bs_id, 'successors': row[required_columns["successors"]], 'predecessors': row[required_columns["predecessors"]]}
+                        self.succession_data.append(ordering)
 
                         # Create a savepoint
                         sid = transaction.savepoint()
@@ -220,3 +227,55 @@ class ConceptRingsFileHandler():
                 return 0
         else:
             return cell
+
+    def update_block_links(self):
+        # Step 1: Delete all existing links
+        for b in self.succession_data:
+            block_id = b['id']
+
+            # Get the block using its blastsolids_id
+            block = m.FlowModelConceptRing.objects.filter(
+                blastsolids_id=block_id).first()
+            if not block:
+                # Skip if the block doesn't exist
+                continue
+
+            # Delete all existing links for this block (both as block and linked)
+            m.BlockLink.objects.filter(block=block).delete()
+
+        # Step 2: Create new links
+        for b in self.succession_data:
+            block_id = b['id']
+
+            # Get the block using its blastsolids_id
+            block = m.FlowModelConceptRing.objects.filter(
+                blastsolids_id=block_id).first()
+            if not block:
+                # Skip if the block doesn't exist
+                continue
+
+            # Create new links for successors
+            if b['successors']:
+                successor_ids = b['successors'].split(';')
+                for succ_id in successor_ids:
+                    successor = m.FlowModelConceptRing.objects.filter(
+                        blastsolids_id=succ_id).first()
+                    if successor:
+                        m.BlockLink.objects.create(
+                            block=block,
+                            linked=successor,
+                            direction='S'
+                        )
+
+            # Create new links for predecessors
+            if b['predecessors']:
+                predecessor_ids = b['predecessors'].split(';')
+                for pred_id in predecessor_ids:
+                    predecessor = m.FlowModelConceptRing.objects.filter(
+                        blastsolids_id=pred_id).first()
+                    if predecessor:
+                        m.BlockLink.objects.create(
+                            block=block,
+                            linked=predecessor,
+                            direction='P'
+                        )

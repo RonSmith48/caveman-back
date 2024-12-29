@@ -82,7 +82,6 @@ class ScheduleFileHandler():
     def handle_schedule_file(self, request, file, scenario_name):
         user = request.user
 
-
         scenario = m.Scenario.objects.create(
             name=scenario_name,
             owner=user,
@@ -105,7 +104,7 @@ class ScheduleFileHandler():
         if self.error_msg:
             return {'msg': {'body': self.error_msg, 'type': 'error'}}
 
-        #rows_processed = 'All'
+        # rows_processed = 'All'
         msg = f'{rows_processed} rows processed successfully'
 
         return {'msg': {'body': msg, 'type': 'success'}}
@@ -210,10 +209,33 @@ class ScheduleFileHandler():
         if self.error_msg:
             print("error", self.error_msg)
             return
-        
+
         self.generate_schedule_csv()
 
     def determine_mining_direction(self, concept_ring):
+        drv_name = self.mining_dir_successor_method(concept_ring)
+        if drv_name:
+            return drv_name
+        else:
+            return self.mining_dir_guess_method(concept_ring)
+
+    def mining_dir_successor_method(self, concept_ring):
+        baf = BlockAdjacencyFunctions()
+        drv_name = concept_ring.description
+        links = pcm.BlockLink.objects.filter(block=concept_ring)
+        if links:
+            for link in links:
+                if link.linked == drv_name:
+                    if link.direction == 'S':
+                        self.mining_direction = baf.determine_direction(
+                            concept_ring, link)
+                    else:
+                        self.mining_direction = baf.determine_direction(
+                            link, concept_ring)
+                    return drv_name
+        return None
+
+    def mining_dir_guess_method(self, concept_ring):
         # if there is an alias, try to use that first
         drv_name = concept_ring.alias
         if drv_name:
@@ -580,17 +602,17 @@ class ScheduleFileHandler():
 
     # =============== REPORTING ===================
 
-
     def generate_schedule_csv(self):
-        queryset = m.SchedSim.objects.filter(scenario=self.scenario, start_date__isnull=False)
+        queryset = m.SchedSim.objects.filter(
+            scenario=self.scenario, start_date__isnull=False)
 
         # Prepare data aggregation
         data = queryset.values('description', 'start_date', 'start_date__year', 'start_date__month', 'start_date__day') \
-                    .annotate(
-                        total_rings=Sum('sum_drill_rings_from_prev'),
-                        total_mtrs=Sum('sum_drill_mtrs_from_prev')
-                    ) \
-                    .order_by('description', 'start_date__year', 'start_date__month', 'start_date__day')
+            .annotate(
+            total_rings=Sum('sum_drill_rings_from_prev'),
+            total_mtrs=Sum('sum_drill_mtrs_from_prev')
+        ) \
+            .order_by('description', 'start_date__year', 'start_date__month', 'start_date__day')
 
         # Organize data by description and periods (months or half-months)
         descriptions = {}
@@ -603,9 +625,11 @@ class ScheduleFileHandler():
             # Determine the period based on split_month option
             if self.split_month:
                 if day <= 15:
-                    period = f"{datetime(year, month, 1).strftime('%b %Y')} (1-15)"
+                    period = f"{
+                        datetime(year, month, 1).strftime('%b %Y')} (1-15)"
                 else:
-                    period = f"{datetime(year, month, 16).strftime('%b %Y')} (16-{calendar.monthrange(year, month)[1]})"
+                    period = f"{datetime(year, month, 16).strftime(
+                        '%b %Y')} (16-{calendar.monthrange(year, month)[1]})"
             else:
                 period = datetime(year, month, 1).strftime('%b %Y')
 
@@ -619,8 +643,10 @@ class ScheduleFileHandler():
 
         # Get all unique periods and sort them chronologically
         periods = sorted(
-            {period for desc_data in descriptions.values() for period in desc_data.keys()},
-            key=lambda x: datetime.strptime(x.split(" ")[0], '%b').replace(year=int(x.split(" ")[1].split("(")[0]))
+            {period for desc_data in descriptions.values()
+             for period in desc_data.keys()},
+            key=lambda x: datetime.strptime(x.split(" ")[0], '%b').replace(
+                year=int(x.split(" ")[1].split("(")[0]))
         )
 
         # Write to CSV
@@ -628,8 +654,10 @@ class ScheduleFileHandler():
             writer = csv.writer(csvfile)
 
             # Header rows
-            writer.writerow(['Description'] + [period for period in periods for _ in range(2)])
-            writer.writerow([''] + [col for period in periods for col in ('Rings', 'Meters')])
+            writer.writerow(['Description'] +
+                            [period for period in periods for _ in range(2)])
+            writer.writerow(
+                [''] + [col for period in periods for col in ('Rings', 'Meters')])
 
             # Data rows
             for desc, period_data in descriptions.items():
@@ -642,8 +670,6 @@ class ScheduleFileHandler():
                         row.extend([0, 0])  # Fill with zeros if no data
                 writer.writerow(row)
 
-
-        
         """  queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
 
         data = queryset.values('description', 'start_date__year', 'start_date__month') \
@@ -689,7 +715,6 @@ class ScheduleFileHandler():
                     else:
                         row.extend([0, 0])  # Fill with zeros if no data
                 writer.writerow(row) """
-
 
     # ================ TESTING ====================
 

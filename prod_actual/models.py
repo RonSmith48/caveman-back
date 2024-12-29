@@ -195,3 +195,14 @@ class RingStateChange(models.Model):
     mtrs_drilled = models.DecimalField(
         max_digits=5, decimal_places=1, default=0)
     holes_completed = models.SmallIntegerField(blank=True, null=True)
+
+
+class RingLink(models.Model):
+    ring = models.ForeignKey(
+        ProductionRing, on_delete=models.CASCADE, related_name='linked_ring')
+    linked = models.ForeignKey(
+        ProductionRing, on_delete=models.CASCADE, related_name='linked')
+    direction = models.CharField(max_length=1, choices=[
+        ('P', 'Predecessor'),
+        ('S', 'Successor')
+    ], null=True, blank=True)

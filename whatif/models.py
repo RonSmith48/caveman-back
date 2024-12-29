@@ -59,15 +59,11 @@ class SchedSim(models.Model):
     sum_drill_rings_from_prev = models.IntegerField(blank=True, null=True)
     sum_tonnes_from_prev = models.IntegerField(blank=True, null=True)
     sum_charged_rings_from_prev = models.IntegerField(blank=True, null=True)
-    blastsolids_id = models.CharField(max_length=30, blank=True, null=True) # for bog location only
+    blastsolids_id = models.CharField(
+        max_length=30, blank=True, null=True)  # for bog location only
     start_date = models.DateField(blank=True, null=True)
     finish_date = models.DateField(blank=True, null=True)
     sequence = models.IntegerField(blank=True, null=True)
     json = JSONField(blank=True, null=True)
     level = models.SmallIntegerField()
     description = models.CharField(max_length=50, blank=True, null=True)
-
-
-
-
-

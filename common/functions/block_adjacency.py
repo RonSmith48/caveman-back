@@ -52,6 +52,10 @@ class BlockAdjacencyFunctions():
             adjacent_block__in=blocks_on_level).delete()
 
     def find_adjacent_blocks(self, block, blocks):
+        '''
+        block: This block
+        blocks: All the blocks on the level
+        '''
         direction = {'N': {}, 'NE': {}, 'E': {}, 'SE': {},
                      'S': {}, 'SW': {}, 'W': {}, 'NW': {}}
 
