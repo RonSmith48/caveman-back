@@ -37,7 +37,6 @@ class ProductionRing(Location):
     detonator_designed = models.CharField(max_length=50, blank=True, null=True)
     detonator_actual = models.CharField(max_length=50, blank=True, null=True)
     designed_emulsion_kg = models.SmallIntegerField(blank=True, null=True)
-    num_recharged_holes = models.SmallIntegerField(blank=True, null=True)
     design_date = models.CharField(max_length=10, blank=True, null=True)
     markup_date = models.CharField(max_length=10, blank=True, null=True)
     fireby_date = models.CharField(max_length=10, blank=True, null=True)
@@ -71,12 +70,6 @@ class ProductionRing(Location):
     in_overdraw_zone = models.BooleanField(
         default=False, blank=True, null=True)
     in_flow = models.BooleanField(default=False)
-    has_ungrouted_ddh = models.BooleanField(default=False)
-    is_prox_to_void = models.BooleanField(default=False)
-    is_redrilled = models.BooleanField(default=False)
-    has_bg_report = models.BooleanField(default=False)
-    has_blocked_holes = models.BooleanField(default=False)
-    has_lost_rods = models.BooleanField(default=False)
 
     def __str__(self):
         return f'{self.level} {self.oredrive} {self.ring_number_txt}'
@@ -183,11 +176,14 @@ class RingState(models.Model):
 class RingStateChange(models.Model):
     ring_state_id = models.BigAutoField(primary_key=True)
     is_active = models.BooleanField(default=True)
+    deactivated_by = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name='change_deactivation', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     prod_ring = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
-    timestamp = models.DateTimeField(auto_now_add=True)
     shkey = models.CharField(max_length=20, blank=True, null=True)
     user = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, blank=True, null=True)
+        CustomUser, on_delete=models.CASCADE, related_name='change_activation', blank=True, null=True)
     # This is a secondary state, a tag
     state = models.ForeignKey(RingState, on_delete=models.CASCADE)
     comment = models.TextField(blank=True, null=True)
