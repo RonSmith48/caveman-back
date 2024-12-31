@@ -108,11 +108,6 @@ class DrillEntryView(APIView):
             drilled_meters = data.get('drilled_mtrs')
             ring.drilled_meters = None if drilled_meters == "" else drilled_meters
 
-            ring.is_redrilled = data.get('redrill', ring.is_redrilled)
-            ring.has_lost_rods = data.get('lost_rods', ring.has_lost_rods)
-            ring.has_bg_report = data.get('has_bg', ring.has_bg_report)
-            ring.is_making_water = data.get(
-                'making_water', ring.is_making_water)
             if not data.get('half_drilled'):
                 ring.drill_complete_shift = data.get(
                     'date', ring.drill_complete_shift)
@@ -135,15 +130,13 @@ class DrillEntryView(APIView):
 class ChargeEntryView(APIView):
     def get(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-        rings = bdcf.get_blocked()
-        half = bdcf.get_half_charged()
         drives = bdcf.get_distict_drives_list('Drilled')
-        data = {'blocked_holes': rings, 'incomplete': half,
-                'drilled_drives_list': drives}
+        data = {'drilled_drives_list': drives}
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
         ensure_mandatory_ring_states()
+        bdcf = BDCFRings()
         sk = Shkey()
         data = request.data
         print('data', data)  # =========
@@ -156,16 +149,16 @@ class ChargeEntryView(APIView):
             d = data.get('date')
             shift = data.get('shift')
 
-            shkey = data.get('charge_shift')  # from update
-            if not shkey:  # new entry
+            shkey = data.get('shkey')  # From update
+            if not shkey:  # New entry
                 shkey = sk.generate_shkey(d, shift)
 
             ring.charge_shift = shkey
-            ring.has_blocked_holes = data.get(
-                'blocked_holes', ring.has_blocked_holes)
             ring.status = data.get('status', ring.status)
             ring.detonator_actual = data.get(
                 'explosive', ring.detonator_actual)
+
+            conditions = data.get('conditions', [])
 
             # Save the updated model instance
             ring.save()
@@ -173,70 +166,8 @@ class ChargeEntryView(APIView):
             # status of 'Drilled' means un-charge
             # status of 'Charged' means charge
 
-            key_states = {
-                "incomplete": {"pri_state": "Charged", "sec_state": "Incomplete"},
-                "charged_short": {"pri_state": "Charged", "sec_state": "Charged Short"},
-                "blocked_holes": {"pri_state": "Drilled", "sec_state": "Blocked Holes"},
-                "recharged": {"pri_state": "Charged", "sec_state": "Recharged Holes"},
-            }
-
-            any_state_selected = False
-
-            # Iterate through the key states and create RingStateChange entries
-            for key, state_info in key_states.items():
-                if data.get(key):  # Check if the state is `true` in the form
-                    any_state_selected = True
-                    pri_state = state_info["pri_state"]
-                    sec_state = state_info["sec_state"]
-
-                    # Find the corresponding RingState
-                    ring_state = m.RingState.objects.filter(
-                        pri_state=pri_state, sec_state=sec_state).first()
-                    if not ring_state:
-                        return Response({
-                            'msg': {
-                                'type': 'error',
-                                'body': f"RingState with pri_state '{pri_state}' and sec_state '{sec_state}' not found"
-                            }
-                        }, status=status.HTTP_400_BAD_REQUEST)
-
-                    # Create a new RingStateChange entry
-                    m.RingStateChange.objects.create(
-                        prod_ring=ring,
-                        state=ring_state,
-                        shkey=shkey,
-                        user=request.user if request.user.is_authenticated else None,
-                        comment=data.get('comment'),
-                        operation_complete=data.get(
-                            'operation_complete', True),
-                        mtrs_drilled=data.get('mtrs_drilled', 0),
-                        holes_completed=data.get('holes_completed'),
-                        is_active=True  # Set as active by default
-                    )
-
-            # If no states are selected, default to Charged - None
-            if not any_state_selected:
-                ring_state = m.RingState.objects.filter(
-                    pri_state=ring.status, sec_state=None).first()
-                if not ring_state:
-                    return Response({
-                        'msg': {
-                            'type': 'error',
-                            'body': "RingState with pri_state 'Charged' and sec_state 'None' not found"
-                        }
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-                m.RingStateChange.objects.create(
-                    prod_ring=ring,
-                    state=ring_state,
-                    shkey=shkey,
-                    user=request.user if request.user.is_authenticated else None,
-                    comment=data.get('comment'),
-                    operation_complete=data.get('operation_complete', True),
-                    mtrs_drilled=data.get('mtrs_drilled', 0),
-                    holes_completed=data.get('holes_completed'),
-                    is_active=True  # Set as active by default
-                )
+            creation_list = bdcf.make_deselected_conditions_inactive(request)
+            bdcf.create_ring_conditions(request, creation_list)
 
             return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
 
@@ -415,14 +346,12 @@ class BDCFRings():
 
         for ring in designed_rings:
 
+            conditions = self.get_current_conditions(ring, 'Drilled')
+
             ring_details = {'location_id': ring.location_id,
                             'drill_complete_shift': ring.drill_complete_shift,
                             'ring_number_txt': ring.ring_number_txt,
-                            'is_making_water': ring.is_making_water,
-                            'is_redrilled': ring.is_redrilled,
-                            'has_bg_report': ring.has_bg_report,
-                            'has_blocked_holes': ring.has_blocked_holes,
-                            'has_lost_rods': ring.has_lost_rods
+                            'conditions': conditions
                             }
             drilled_rings.append(ring_details)
 
@@ -441,55 +370,40 @@ class BDCFRings():
         ).order_by('ring_number_txt')
 
         for ring in charged_rings:
+            conditions = self.get_ring_changes(ring, 'Charged')
 
             ring_details = {'location_id': ring.location_id,
                             'charge_shift': ring.charge_shift,
                             'ring_number_txt': ring.ring_number_txt,
-                            'detonator': ring.detonator_actual
+                            'detonator': ring.detonator_actual,
+                            'conditions': conditions
                             }
             charged.append(ring_details)
 
         return charged
 
+    def get_ring_changes(self, ring, pri_state):
+        changes = m.RingStateChange.objects.filter(
+            is_active=True, prod_ring=ring, state__pri_state=pri_state)
+        conditions = []
+        for change in changes:
+            c = {'state': change.state.sec_state,
+                 'shkey': change.shkey,
+                 'comment': change.comment,
+                 'mtrs_drilled': change.mtrs_drilled,
+                 'created_at': change.created_at,
+                 'holes_completed': change.holes_completed,  # int
+                 'user': {'name': change.user.get_full_name(),
+                          'avatar': change.user.avatar,
+                          'email': change.user.email}}
+            conditions.append(c)
+        return conditions
+
     def get_blocked(self):
-        rings = m.ProductionRing.objects.filter(
-            is_active=True,
-            has_blocked_holes=True
-        )
-
-        rings = []
-        for r in rings:
-            ring = {}
-            ring['location_id'] = r.location_id
-            ring['level'] = r.level
-            ring['oredrive'] = r.oredrive
-            ring['ring_number_txt'] = r.ring_number_txt
-            ring['has_blocked_holes'] = r.has_blocked_holes
-
-            rings.append(ring)
-
-        return rings
+        pass
 
     def get_half_charged(self):
-        rings = []
-        ring_states = m.RingStateChange.objects.filter(
-            is_active=True, state__pri_state='Charged', state__sec_state='Incomplete')
-        for r in ring_states:
-            ring = {}
-            ring['location_id'] = r.prod_ring.location_id
-            ring['level'] = r.prod_ring.level
-            ring['oredrive'] = r.prod_ring.oredrive
-            ring['ring_number_txt'] = r.prod_ring.ring_number_txt
-            ring['has_blocked_holes'] = r.prod_ring.has_blocked_holes
-            ring['timestamp'] = r.timestamp
-            ring['user_email'] = r.user.email
-            ring['state'] = r.state
-            ring['comment'] = r.comment
-            ring['operation_complete'] = r.operation_complete
-            ring['holes_completed'] = r.holes_completed
-
-            rings.append(ring)
-        return rings
+        pass
 
     def get_state_list(self, status):
         # Query the database for RingState objects with the given pri_state
@@ -502,3 +416,149 @@ class BDCFRings():
         )
 
         return list(sec_states)
+
+    def get_current_conditions(self, ring, status):
+        '''
+        Returns a list of current conditions for a ring in JSON format.
+        [{'attribute': value}, {'attribute': value}]
+        '''
+        # Retrieve all active RingStateChange entries for the given ring and status
+        condition_results = m.RingStateChange.objects.filter(
+            is_active=True,
+            prod_ring=ring,
+            state__pri_state=status
+        )
+
+        # Build the JSON response
+        conditions = [
+            {
+                # Secondary state (condition)
+                'attribute': state.state.sec_state,
+                'shkey': state.shkey,  # Shift key
+                'comment': state.comment,
+                'operation_complete': state.operation_complete,
+                'mtrs_drilled': state.mtrs_drilled,
+                'holes_completed': state.holes_completed,
+                'updated_at': state.updated_at.isoformat(),  # Include timestamp for clarity
+                'user': {
+                    'name': state.user.username if state.user else None,
+                    'avatar': state.user.avatar if state.user and hasattr(state.user, 'avatar') else None
+                }
+            }
+            for state in condition_results
+        ]
+
+        return conditions
+
+    def make_deselected_conditions_inactive(self, request):
+        '''
+        Makes conditions that have been deselected, inactive
+        Removes conditions from the list that remain selected
+        Returns a list of conditions that need to be created
+        '''
+        # Extract required data from the request
+        location_id = request.data.get('location_id')
+        selected_conditions = request.data.get('conditions', [])
+        status = request.data.get('status')
+        user = request.user if request.user.is_authenticated else None
+
+        # Retrieve current active states for the specified ring
+        current_states = m.RingStateChange.objects.filter(
+            is_active=True,
+            prod_ring__location_id=location_id
+        )
+
+        # Track the conditions that remain to be created
+        conditions_to_create = selected_conditions.copy()
+
+        for state in current_states:
+            # Extract pri_state and sec_state from the current active state
+            pri_state = state.state.pri_state
+            sec_state = state.state.sec_state
+
+            # Check if this condition is still selected
+            if sec_state in selected_conditions and pri_state == status:
+                # If the condition remains selected, remove it from conditions_to_create
+                conditions_to_create.remove(sec_state)
+            else:
+                # If the condition has been deselected, deactivate the current state
+                state.is_active = False
+                state.deactivated_by = user
+                state.save()
+
+        return conditions_to_create
+
+    def create_ring_conditions(self, request, conditions):
+        '''
+        Create RingStateChange records for a list of conditions.
+        Input: request and a list of conditions to be created.
+        For empty conditions list, pri_state = status, sec_state = None.
+        '''
+        # Extract required data from the request
+        location_id = request.data.get('location_id')
+        status = request.data.get('status')
+        user = request.user if request.user.is_authenticated else None
+        shkey = request.data.get('shkey')  # More generic term for charge_shift
+        comment = request.data.get('comment')
+        operation_complete = request.data.get('operation_complete', True)
+        mtrs_drilled = request.data.get('mtrs_drilled', 0)
+        holes_completed = request.data.get('holes_completed')
+
+        # Get the associated ProductionRing
+        try:
+            prod_ring = m.ProductionRing.objects.get(location_id=location_id)
+        except m.ProductionRing.DoesNotExist:
+            return Response(
+                {'msg': {'type': 'error', 'body': 'Production ring not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Handle default state creation for empty conditions
+        if not conditions:
+            # Find the default RingState (sec_state=None)
+            ring_state = m.RingState.objects.filter(
+                pri_state=status, sec_state=None).first()
+            if not ring_state:
+                return Response(
+                    {'msg': {'type': 'error', 'body': "Default RingState not found"}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create the default RingStateChange
+            m.RingStateChange.objects.create(
+                prod_ring=prod_ring,
+                state=ring_state,
+                shkey=shkey,
+                user=user,
+                comment=comment,
+                operation_complete=operation_complete,
+                mtrs_drilled=mtrs_drilled,
+                holes_completed=holes_completed,
+                is_active=True  # Mark as active
+            )
+            return
+
+        # Iterate through conditions and create RingStateChange entries
+        for condition in conditions:
+            # Find the corresponding RingState
+            ring_state = m.RingState.objects.filter(
+                pri_state=status, sec_state=condition).first()
+            if not ring_state:
+                return Response(
+                    {'msg': {'type': 'error', 'body': f"RingState with pri_state '{
+                        status}' and sec_state '{condition}' not found"}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create a new RingStateChange entry
+            m.RingStateChange.objects.create(
+                prod_ring=prod_ring,
+                state=ring_state,
+                shkey=shkey,
+                user=user,
+                comment=comment,
+                operation_complete=operation_complete,
+                mtrs_drilled=mtrs_drilled,
+                holes_completed=holes_completed,
+                is_active=True  # Mark as active
+            )
