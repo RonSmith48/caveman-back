@@ -115,3 +115,7 @@ class Shkey(object):
         else:
             next_day = date_obj - timedelta(days=1)
             return next_day.strftime("%Y%m%d") + "P2"
+
+    @staticmethod
+    def today_shkey():
+        return Shkey.generate_shkey(date.today())
