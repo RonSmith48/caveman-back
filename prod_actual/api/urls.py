@@ -3,21 +3,28 @@ from prod_actual.api.views.crud import ProdRingListCreateView, ProdRingRetrieveU
 from prod_actual.api.views.ring_inspector import LevelListView, OredriveListView, RingNumberListView, RingView
 from prod_actual.api.views.upload_dupe import UploadDupeView
 from prod_actual.api.views.prod_orphans import OrphanListView, MatchProdConceptRingsView
+from prod_actual.api.views.location_history import LocationHistoryView
 import prod_actual.api.views.bdcf as bdcf
 
 urlpatterns = [
     path('bdcf/bog/', bdcf.BoggingRingsView.as_view(), name='bdcf-bog'),
     path('bdcf/bog/<int:location_id>/',
          bdcf.BoggingMovementsView.as_view(), name='bdcf-bog'),
+    path('bdcf/charge/', bdcf.ChargeEntryView.as_view(), name='bdcf-charge'),
+    path('bdcf/charge/<str:lvl_od>/',
+         bdcf.ChargeEntryRingsListView.as_view(), name='bdcf-charge'),
     path('bdcf/conditions/<str:stat>/',
          bdcf.ConditionsListView.as_view(), name='bdcf-conditions'),
     path('bdcf/drill/', bdcf.DrillEntryView.as_view(), name='bdcf-drill'),
     path('bdcf/drilled/<str:lvl_od>/',
          bdcf.DrillEntryRingsListView.as_view(), name='bdcf-drill'),
-    path('bdcf/charge/', bdcf.ChargeEntryView.as_view(), name='bdcf-charge'),
-    path('bdcf/charge/<str:lvl_od>/',
-         bdcf.ChargeEntryRingsListView.as_view(), name='bdcf-charge'),
     path('bdcf/fire/', bdcf.FireEntryView.as_view(), name='bdcf-fire'),
+    path('bdcf/<int:location_id>/',
+         bdcf.LocationDetailView.as_view(), name='location-detail'),
+    path('bdcf/status-rollback/<int:location_id>/',
+         bdcf.StatusRollbackView.as_view(), name='status-rollback'),
+    path('history/<int:location_id>/',
+         LocationHistoryView.as_view(), name='location-history'),
     path('orphaned-rings/', OrphanListView.as_view(), name='prod-orphans'),
     path('orphaned-rings/process/',
          MatchProdConceptRingsView.as_view(), name='process-orphans'),

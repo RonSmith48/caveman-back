@@ -1,7 +1,7 @@
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import DatabaseError, IntegrityError
+from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Sum, F, Value, CharField
 from django.db.models.functions import Concat, Cast
 
@@ -12,11 +12,14 @@ from rest_framework.response import Response
 from common.functions.common_methods import CommonMethods
 from common.functions.shkey import Shkey
 from common.functions.ring_state import ensure_mandatory_ring_states
+from common.functions.status import Status
 
 from datetime import timedelta, date
 
 import prod_actual.models as m
 import prod_actual.api.serializers as s
+import prod_concept.api.serializers as cs
+import users.api.serializers as us
 import json
 
 
@@ -139,7 +142,6 @@ class ChargeEntryView(APIView):
         bdcf = BDCFRings()
         sk = Shkey()
         data = request.data
-        print('data', data)  # =========
         location_id = data.get('location_id')
         if not location_id:
             return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
@@ -179,6 +181,56 @@ class ChargeEntryView(APIView):
             print("error", str(e))
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    def patch(self, request, *args, **kwargs):
+        data = request.data
+        location_id = data.get('location_id')
+        # Ensure conditions is a set
+        conditions = set(data.get('conditions', []))
+        user = request.user
+        shkey = Shkey.today_shkey()
+        comment = data.get('comment', '')
+
+        if not location_id:
+            return Response({'msg': {'body': 'Location ID is required', 'type': 'error'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Retrieve production ring
+                ring = m.ProductionRing.objects.get(location_id=location_id)
+
+                # Fetch existing active state changes
+                state_change_qs = m.RingStateChange.objects.filter(
+                    prod_ring=ring, is_active=True, state__pri_state=ring.status
+                )
+
+                # Deactivate states not in conditions
+                for sc in state_change_qs:
+                    if sc.state.id in conditions:
+                        # Remove from set if already active
+                        conditions.remove(sc.state.id)
+                    else:
+                        sc.is_active = False
+                        sc.deactivated_by = user
+                        sc.save()
+
+                # Add new conditions
+                for c in conditions:
+                    m.RingStateChange.objects.create(
+                        prod_ring=ring,
+                        shkey=shkey,
+                        user=user,
+                        state_id=c,  # Use state_id instead of empty string
+                        comment=comment
+                    )
+
+            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
+
+        except m.ProductionRing.DoesNotExist:
+            return Response({'msg': {'body': 'Production ring not found', 'type': 'error'}}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({'msg': {'body': f'Error updating production ring: {str(e)}', 'type': 'error'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class ChargeEntryRingsListView(APIView):
     def get(self, request, lvl_od, *args, **kwargs):
@@ -198,6 +250,20 @@ class FireEntryView(APIView):
         bdcf = BDCFRings()
         rings = bdcf.get_blocked()
         return Response(rings, status=status.HTTP_200_OK)
+
+
+class LocationDetailView(APIView):
+    def get(self, request, location_id, *args, **kwargs):
+        bdcf = BDCFRings()
+        details = bdcf.get_prod_location_details(location_id)
+        return Response(details, status=status.HTTP_200_OK)
+
+
+class StatusRollbackView(APIView):
+    def get(self, request, location_id, *args, **kwargs):
+        bdcf = BDCFRings()
+        details = bdcf.do_status_rollback(request, location_id)
+        return Response(details, status=status.HTTP_200_OK)
 
 
 class BDCFRings():
@@ -406,16 +472,13 @@ class BDCFRings():
         pass
 
     def get_state_list(self, status):
-        # Query the database for RingState objects with the given pri_state
-        # Order them alphabetically by sec_state and exclude None values
-        sec_states = (
+        states = (
             m.RingState.objects.filter(pri_state=status)
             .exclude(sec_state__isnull=True)
             .order_by('sec_state')
-            .values_list('sec_state', flat=True)
+            .values('id', 'sec_state')
         )
-
-        return list(sec_states)
+        return list(states)
 
     def get_current_conditions(self, ring, status):
         '''
@@ -562,3 +625,85 @@ class BDCFRings():
                 holes_completed=holes_completed,
                 is_active=True  # Mark as active
             )
+
+    def get_prod_location_details(self, location_id):
+        try:
+            prod_ring = m.ProductionRing.objects.get(location_id=location_id)
+        except m.ProductionRing.DoesNotExist:
+            return Response(
+                {'msg': {'type': 'error', 'body': 'Production ring not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Serialize the ProductionRing with excluded unserializable fields.
+        prod_ring_serializer = s.ProdRingSerializer(prod_ring)
+        prod_ring_data = prod_ring_serializer.data
+
+        # Similarly serialize the related ConceptRing.
+        concept_ring_serializer = cs.ConceptRingSerializer(
+            prod_ring.concept_ring)
+        concept_ring_data = concept_ring_serializer.data
+
+        # Serialize the RingStateChange queryset.
+        changes_qs = m.RingStateChange.objects.filter(prod_ring=prod_ring)
+        changes_data = []
+        for change in changes_qs:
+            c_serializer = s.RingStateChangeSerializer(change)
+            c_data = c_serializer.data
+            c_data['deactivated'] = (
+                us.UserSerializer(
+                    change.deactivated_by).data if change.deactivated_by else None
+            )
+            # Serialize the 'user' field if it exists
+            c_data['activated'] = (
+                us.UserSerializer(change.user).data if change.user else None
+            )
+            c_data['pri_state'] = change.state.pri_state
+            c_data['sec_state'] = change.state.sec_state
+
+            changes_data.append(c_data)
+
+        return {
+            "prod_ring": prod_ring_data,
+            "concept_ring": concept_ring_data,
+            "changes": changes_data,
+        }
+
+    def do_status_rollback(self, request, location_id):
+        ring = get_object_or_404(m.ProductionRing, location_id=location_id)
+        current_status = ring.status
+        s = Status(current_status)
+
+        prev_status = s.prev_status()
+        if prev_status is None:
+            return {'msg': {'type': 'error', 'body': 'Cannot roll back status'}}
+
+        with transaction.atomic():
+            # Update ring status and clear fields
+            ring.status = prev_status
+            ring.charge_shift = None
+            ring.detonator_actual = None
+            ring.save()
+
+            # Bulk update instead of looping
+            m.RingStateChange.objects.filter(
+                prod_ring=ring, state__pri_state=current_status
+            ).update(is_active=False, deactivated_by=request.user)
+
+            # Get new state
+            ring_state_obj = m.RingState.objects.filter(
+                pri_state=ring.status, sec_state=None
+            ).first()
+
+            if not ring_state_obj:
+                return {'msg': {'type': 'error', 'body': 'No matching RingState found'}}
+
+            # Create new state change
+            m.RingStateChange.objects.create(
+                prod_ring=ring,
+                state=ring_state_obj,
+                user=request.user,
+                is_active=True
+            )
+
+        return {'msg': {'type': 'success', 'body': 'Happy days'}}

@@ -5,7 +5,7 @@ import prod_actual.models as m
 class ProdRingSerializer(serializers.ModelSerializer):
     class Meta:
         model = m.ProductionRing
-        fields = '__all__'  # Include all fields for now, or specify specific fields as needed
+        exclude = ['concept_ring']
 
     def create(self, validated_data):
         # Custom creation logic if needed
@@ -14,6 +14,12 @@ class ProdRingSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Custom update logic if needed
         return super().update(instance, validated_data)
+
+
+class RingStateChangeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = m.RingStateChange
+        exclude = ['deactivated_by', 'prod_ring', 'user', 'state']
 
 
 class SingleFileSerializer(serializers.Serializer):
