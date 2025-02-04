@@ -322,3 +322,18 @@ class CustomTokenRefreshView(TokenRefreshView):
 
             return Response({'msg': {'type': 'error', 'body': 'An unexpected error occurred.'}},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VerifyTokenView(APIView):
+    """
+    This endpoint checks if the provided access token is valid.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """
+        If the request is authenticated, the token is valid.
+        Otherwise, return a 401 error.
+        """
+        return Response({'msg': {'type': 'success', 'body': 'Token is valid'}}, status=status.HTTP_200_OK)
