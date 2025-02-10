@@ -8,6 +8,7 @@ db.sqlite3
 .DS_Store
 
 # If using Django migrations
+/migrations
 */migrations/*
 !*/migrations/__init__.py
 
