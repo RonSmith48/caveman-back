@@ -4,6 +4,20 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+asgiref = "==3.8.1"
+django = "==5.0.8"
+django-cors-headers = "==4.4.0"
+djangorestframework = "==3.15.2"
+djangorestframework-simplejwt = "==5.3.1"
+numpy = "==2.0.1"
+pandas = "==2.2.2"
+psycopg2 = "==2.9.9"
+pyjwt = "==2.9.0"
+python-dateutil = "==2.9.0.post0"
+pytz = "==2024.1"
+six = "==1.16.0"
+sqlparse = "==0.5.1"
+tzdata = "==2024.1"
 
 [dev-packages]
 
