@@ -91,3 +91,5 @@ coverage.xml
 # Windows
 Thumbs.db
 ehthumbs.db
+Pipfile
+Pipfile.lock
