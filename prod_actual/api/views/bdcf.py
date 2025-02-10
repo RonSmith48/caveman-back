@@ -17,10 +17,13 @@ from common.functions.status import Status
 from datetime import timedelta, date
 
 import prod_actual.models as m
+import prod_concept.models as cm
 import prod_actual.api.serializers as s
 import prod_concept.api.serializers as cs
 import users.api.serializers as us
 import json
+import math
+import random
 
 
 class BoggingRingsView(APIView):
@@ -140,96 +143,11 @@ class ChargeEntryView(APIView):
     def post(self, request, *args, **kwargs):
         ensure_mandatory_ring_states()
         bdcf = BDCFRings()
-        sk = Shkey()
-        data = request.data
-        location_id = data.get('location_id')
-        if not location_id:
-            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            ring = m.ProductionRing.objects.get(location_id=location_id)
-            d = data.get('date')
-            shift = data.get('shift')
-
-            shkey = data.get('shkey')  # From update
-            if not shkey:  # New entry
-                shkey = sk.generate_shkey(d, shift)
-
-            ring.charge_shift = shkey
-            ring.status = data.get('status', ring.status)
-            ring.detonator_actual = data.get(
-                'explosive', ring.detonator_actual)
-
-            conditions = data.get('conditions', [])
-
-            # Save the updated model instance
-            ring.save()
-
-            # status of 'Drilled' means un-charge
-            # status of 'Charged' means charge
-
-            creation_list = bdcf.make_deselected_conditions_inactive(request)
-            bdcf.create_ring_conditions(request, creation_list)
-
-            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
-
-        except m.ProductionRing.DoesNotExist:
-            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}}, status=status.HTTP_404_NOT_FOUND)
-
-        except Exception as e:
-            # Handle unexpected errors
-            print("error", str(e))
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return bdcf.charge_drilled_ring(request)
 
     def patch(self, request, *args, **kwargs):
-        data = request.data
-        location_id = data.get('location_id')
-        # Ensure conditions is a set
-        conditions = set(data.get('conditions', []))
-        user = request.user
-        shkey = Shkey.today_shkey()
-        comment = data.get('comment', '')
-
-        if not location_id:
-            return Response({'msg': {'body': 'Location ID is required', 'type': 'error'}}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            with transaction.atomic():
-                # Retrieve production ring
-                ring = m.ProductionRing.objects.get(location_id=location_id)
-
-                # Fetch existing active state changes
-                state_change_qs = m.RingStateChange.objects.filter(
-                    prod_ring=ring, is_active=True, state__pri_state=ring.status
-                )
-
-                # Deactivate states not in conditions
-                for sc in state_change_qs:
-                    if sc.state.id in conditions:
-                        # Remove from set if already active
-                        conditions.remove(sc.state.id)
-                    else:
-                        sc.is_active = False
-                        sc.deactivated_by = user
-                        sc.save()
-
-                # Add new conditions
-                for c in conditions:
-                    m.RingStateChange.objects.create(
-                        prod_ring=ring,
-                        shkey=shkey,
-                        user=user,
-                        state_id=c,  # Use state_id instead of empty string
-                        comment=comment
-                    )
-
-            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
-
-        except m.ProductionRing.DoesNotExist:
-            return Response({'msg': {'body': 'Production ring not found', 'type': 'error'}}, status=status.HTTP_404_NOT_FOUND)
-
-        except Exception as e:
-            return Response({'msg': {'body': f'Error updating production ring: {str(e)}', 'type': 'error'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        bdcf = BDCFRings()
+        return bdcf.update_charged_ring(request)
 
 
 class ChargeEntryRingsListView(APIView):
@@ -252,6 +170,41 @@ class FireEntryView(APIView):
         return Response(rings, status=status.HTTP_200_OK)
 
 
+class GroupFromStatusView(APIView):
+    def get(self, response, stat, *args, **kwargs):
+        bdcf = BDCFRings()
+        levels_list = bdcf.get_levels_list_with_status(stat)
+        return Response(levels_list, status=status.HTTP_200_OK)
+
+
+class GroupRingSelection(APIView):
+    def post(self, request, *args, **kwargs):
+        bdcf = BDCFRings()
+        lvl_rings = bdcf.get_rings_of_status_on_level(request)
+        return Response(lvl_rings, status=status.HTTP_200_OK)
+
+
+class GroupAggregate(APIView):
+    def post(self, request, *args, **kwargs):
+        bdcf = BDCFRings()
+        details = bdcf.aggregate_rings(request)
+        return Response(details, status=status.HTTP_200_OK)
+
+
+class GroupCustomRings(APIView):
+    def post(self, request, *args, **kwargs):
+        bdcf = BDCFRings()
+        details = bdcf.custom_rings(request)
+        return Response(details, status=status.HTTP_200_OK)
+
+
+class GroupsExisting(APIView):
+    def get(self, request, *args, **kwargs):
+        bdcf = BDCFRings()
+        group_data = bdcf.get_existing_groups(request)
+        return Response(group_data, status=status.HTTP_200_OK)
+
+
 class LocationDetailView(APIView):
     def get(self, request, location_id, *args, **kwargs):
         bdcf = BDCFRings()
@@ -268,7 +221,7 @@ class StatusRollbackView(APIView):
 
 class BDCFRings():
     def __init__(self) -> None:
-        pass
+        self.error_msg = None
 
     def get_rings_status(self, level, status):
         pass
@@ -386,6 +339,95 @@ class BDCFRings():
 
         return list(drives)
 
+    def charge_drilled_ring(self, request):
+        sk = Shkey()
+
+        data = request.data
+        location_id = data.get('location_id')
+        if not location_id:
+            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            ring = m.ProductionRing.objects.get(location_id=location_id)
+            d = data.get('date')
+            shift = data.get('shift')
+
+            shkey = data.get('shkey')  # From update
+            if not shkey:  # New entry
+                shkey = sk.generate_shkey(d, shift)
+
+            ring.charge_shift = shkey
+            ring.status = data.get('status', ring.status)
+            ring.detonator_actual = data.get(
+                'explosive', ring.detonator_actual)
+
+            conditions = data.get('conditions', [])
+
+            # Save the updated model instance
+            ring.save()
+
+            self.create_ring_conditions(request, conditions)
+
+            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
+
+        except m.ProductionRing.DoesNotExist:
+            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            # Handle unexpected errors
+            print("error", str(e))
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def update_charged_ring(self, request):
+        data = request.data
+        location_id = data.get('location_id')
+        # Ensure conditions is a set
+        conditions = set(data.get('conditions', []))
+        user = request.user
+        shkey = Shkey.today_shkey()
+        comment = data.get('comment', '')
+
+        if not location_id:
+            return Response({'msg': {'body': 'Location ID is required', 'type': 'error'}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                # Retrieve production ring
+                ring = m.ProductionRing.objects.get(location_id=location_id)
+
+                # Fetch existing active state changes
+                state_change_qs = m.RingStateChange.objects.filter(
+                    prod_ring=ring, is_active=True, state__pri_state=ring.status
+                )
+
+                # Deactivate states not in conditions
+                for sc in state_change_qs:
+                    if sc.state.id in conditions:
+                        # Remove from set if already active
+                        conditions.remove(sc.state.id)
+                    else:
+                        sc.is_active = False
+                        sc.deactivated_by = user
+                        sc.save()
+
+                # Add new conditions
+                for c in conditions:
+                    m.RingStateChange.objects.create(
+                        prod_ring=ring,
+                        shkey=shkey,
+                        user=user,
+                        state_id=c,  # Use state_id instead of empty string
+                        comment=comment
+                    )
+
+            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
+
+        except m.ProductionRing.DoesNotExist:
+            return Response({'msg': {'body': 'Production ring not found', 'type': 'error'}}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({'msg': {'body': f'Error updating production ring: {str(e)}', 'type': 'error'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     def get_rings_of_status_list(self, lvl_od, status):
         level, oredrive = lvl_od.split('_', 1)
         level = int(level)
@@ -397,6 +439,20 @@ class BDCFRings():
         ).order_by('ring_number_txt').values('ring_number_txt', 'location_id')
 
         return list(rings)
+
+    def get_rings_of_status_on_level(self, request):
+        data = request.data
+        status = data.get('create_from')
+        level = data.get('level')
+
+        rings_qs = (
+            m.ProductionRing.objects
+            .filter(is_active=True, status=status, level=level)
+            .order_by('alias')  # Order by alias
+            .values('alias', 'location_id')  # Return only required fields
+        )
+
+        return list(rings_qs)
 
     def get_drilled_rings(self, lvl_od):
         drilled_rings = []
@@ -512,44 +568,6 @@ class BDCFRings():
         ]
 
         return conditions
-
-    def make_deselected_conditions_inactive(self, request):
-        '''
-        Makes conditions that have been deselected, inactive
-        Removes conditions from the list that remain selected
-        Returns a list of conditions that need to be created
-        '''
-        # Extract required data from the request
-        location_id = request.data.get('location_id')
-        selected_conditions = request.data.get('conditions', [])
-        status = request.data.get('status')
-        user = request.user if request.user.is_authenticated else None
-
-        # Retrieve current active states for the specified ring
-        current_states = m.RingStateChange.objects.filter(
-            is_active=True,
-            prod_ring__location_id=location_id
-        )
-
-        # Track the conditions that remain to be created
-        conditions_to_create = selected_conditions.copy()
-
-        for state in current_states:
-            # Extract pri_state and sec_state from the current active state
-            pri_state = state.state.pri_state
-            sec_state = state.state.sec_state
-
-            # Check if this condition is still selected
-            if sec_state in selected_conditions and pri_state == status:
-                # If the condition remains selected, remove it from conditions_to_create
-                conditions_to_create.remove(sec_state)
-            else:
-                # If the condition has been deselected, deactivate the current state
-                state.is_active = False
-                state.deactivated_by = user
-                state.save()
-
-        return conditions_to_create
 
     def create_ring_conditions(self, request, conditions):
         '''
@@ -707,3 +725,379 @@ class BDCFRings():
             )
 
         return {'msg': {'type': 'success', 'body': 'Happy days'}}
+
+    def get_levels_list_with_status(self, status):
+        # using python list/set because using distinct has to be
+        # written differently depending on DB used.
+        levels = sorted(set(
+            m.ProductionRing.objects
+            .filter(is_active=True, status=status)
+            .values_list('level', flat=True)
+        ))
+        return levels
+
+    def aggregate_rings(self, request):
+        data = request.data
+        ring_id_list = data.get('location_ids')
+        ring_list = []
+
+        for id in ring_id_list:
+            prod_ring = m.ProductionRing.objects.get(location_id=id)
+            ring_measures = self.get_ring_measures(prod_ring)
+            if self.error_msg:
+                return {'msg': {'type': 'error', 'body': self.error_msg}}
+            ring_list.append(ring_measures)
+        aggregates = self.calculate_aggregated_total(ring_list)
+        form_elements = self.group_form_data(ring_list)
+
+        return {'rings': ring_list, 'aggregate': aggregates, 'form_elements': form_elements}
+
+    def group_form_data(self, ring_list):
+        if not ring_list:
+            # Handle empty input gracefully
+            return {'level': None, 'oredrive': []}
+
+        level = ring_list[0]['level']
+        oredrive = list({ring['oredrive']
+                        for ring in ring_list})  # Convert set to list
+
+        return {'level': level, 'oredrive': oredrive}
+
+    def calculate_aggregated_total(self, ring_list):
+        emulsion_omitted = False
+        aggregated = {
+            'designed_tonnes': 0,
+            'volume': 0,
+            'designed_emulsion_kg': 0,
+            'avg_density': 0,
+            'avg_modelled_au': 0,
+            'avg_modelled_cu': 0
+        }
+
+        total_weight_density = 0
+        total_weight_au = 0
+        total_weight_cu = 0
+        valid_weighted_rings = 0  # Count rings with valid tonnes/volume for averaging
+
+        for ring in ring_list:
+            tonnes = ring['designed_tonnes']
+            volume = ring['volume']
+
+            if tonnes > 0 and volume > 0:
+                # missing volumes have been added in get_ring_measures method
+                if ring['in_flow']:
+                    # we are expecting a certain volume of material to be bogged
+                    # from flow rings
+                    aggregated['designed_tonnes'] += (
+                        tonnes * ring['draw_percentage'])
+                    aggregated['volume'] += ((tonnes *
+                                             ring['draw_percentage']) / ring['density'])
+                else:
+                    aggregated['designed_tonnes'] += tonnes
+                    aggregated['volume'] += volume
+
+                valid_weighted_rings += 1
+
+                # Weighted sums for weighted average calculations
+                total_weight_density += ring['density'] * tonnes
+                total_weight_au += ring['modelled_au'] * tonnes
+                total_weight_cu += ring['modelled_cu'] * tonnes
+
+            # Always include `designed_emulsion_kg`, even for single-hole rings with no tonnes/volume
+            if not ring['designed_emulsion_kg']:
+                emulsion_omitted = True
+            elif not emulsion_omitted:
+                aggregated['designed_emulsion_kg'] += ring['designed_emulsion_kg']
+
+        # Compute weighted averages only if there are valid rings contributing weight
+        if aggregated['designed_tonnes'] > 0:
+            aggregated['avg_density'] = round(
+                total_weight_density / aggregated['designed_tonnes'], 3)
+            aggregated['avg_modelled_au'] = round(
+                total_weight_au / aggregated['designed_tonnes'], 3)
+            aggregated['avg_modelled_cu'] = round(
+                total_weight_cu / aggregated['designed_tonnes'], 3)
+
+        return aggregated
+
+    def get_ring_measures(self, ring):
+        """Extracts and calculates various measures for a given ring."""
+
+        # Ensure the ring is not orphaned
+        if not ring.concept_ring:
+            self.error_msg = "Cannot process orphaned rings"
+            return
+
+        measures = {
+            'location_id': ring.location_id,
+            'level': ring.level,
+            'oredrive': ring.oredrive,
+            'alias': ring.alias,  # str
+            'volume': ring.blastsolids_volume,  # dec
+            'designed_emulsion_kg': ring.designed_emulsion_kg,  # int
+            'draw_percentage': ring.draw_percentage,  # dec
+            'holes': ring.holes,  # int
+            'in_flow': ring.in_flow,  # bool
+            'x': ring.x,  # dec
+            'y': ring.y,  # dec
+            'z': ring.z,  # dec
+            'density': ring.concept_ring.density,  # dec
+            'modelled_au': ring.concept_ring.modelled_au,  # dec
+            'modelled_cu': ring.concept_ring.modelled_cu,  # dec
+            'status': ring.status,
+            'drill_complete_shift': ring.drill_complete_shift,
+            'charge_shift': ring.charge_shift,
+            'detonator_designed': ring.detonator_designed,
+            'detonator_actual': ring.detonator_actual,
+            'design_date': ring.design_date,
+            'fireby_date': ring.fireby_date
+        }
+
+        if ring.in_flow:
+            # if multiple rings sharing flow ring, draw percentage must be already divided
+            measures['designed_tonnes'] = ring.concept_ring.pgca_modelled_tonnes
+        else:
+            measures['designed_tonnes'] = ring.designed_tonnes  # dec
+        # If the ring has holes but no volume, calculate volume based on density
+        if ring.holes and ring.holes > 1 and not ring.blastsolids_volume:
+            if ring.concept_ring.density > 0:
+                # volume = tonnes / density
+                measures['volume'] = round(
+                    ring.designed_tonnes / ring.concept_ring.density, 3)
+            else:
+                self.error_msg = "Ring cannot have a zero density"
+                return
+
+        return measures
+
+    def custom_rings(self, request):
+        data = request.data
+        concept_ring = self.create_private_concept_ring(data)
+        if self.error_msg:
+            return {'msg': {'type': 'error', 'body': self.error_msg}}
+        custom_rings = self.create_custom_rings(data, concept_ring)
+        self.create_multifire_record(request, custom_rings)
+        self.deactivate_replaced_rings(data)
+
+        return {'msg': {'type': 'success', 'body': 'Nice'}}
+
+    def create_private_concept_ring(self, attributes):
+        avg_xyz = self.calc_avg_xyz(attributes['original'])
+        level = attributes['original'][0]['level']
+        closest_concept = self.find_closest_concept(level, avg_xyz)
+        bs_id = self.generate_blastsolids_id(closest_concept)
+        ag = attributes['aggregate']
+
+        concept_ring = cm.FlowModelConceptRing(
+            description=closest_concept.description,
+            prod_dev_code='C',
+            # created inactive so no-one assigns other rings to it
+            is_active=False,
+            comment='group',
+            level=level,
+            status='Group',
+            x=avg_xyz['x'],
+            y=avg_xyz['y'],
+            z=avg_xyz['z'],
+            blastsolids_id=bs_id,
+            heading=closest_concept.heading,
+            drive=closest_concept.drive,
+            loc=closest_concept.loc,
+            pgca_modelled_tonnes=ag['designed_tonnes'],
+            draw_zone=0,
+            density=ag['avg_density'],
+            modelled_au=ag['avg_modelled_au'],
+            modelled_cu=ag['avg_modelled_cu']
+        )
+
+        concept_ring.save()
+
+        return concept_ring
+
+    def generate_blastsolids_id(self, concept_ring):
+        hex_number = f"{random.randint(0x1000000, 0xFFFFFFF):07X}"
+        return f"{concept_ring.description}_z{hex_number}"
+
+    def calc_avg_xyz(self, input_rings):
+        num_rings = len(input_rings)
+        if num_rings == 0:
+            return {'x': None, 'y': None, 'z': None}
+
+        x = y = z = 0
+        for ring in input_rings:
+            x += ring['x']
+            y += ring['y']
+            z += ring['z']
+
+        x1 = round(x / num_rings, 3)
+        y1 = round(y / num_rings, 3)
+        z1 = round(z / num_rings, 3)
+
+        return {'x': x1, 'y': y1, 'z': z1}
+
+    def find_closest_concept(self, level, xyz):
+        all_rings = cm.FlowModelConceptRing.objects.filter(
+            is_active=True, level=level).values('location_id', 'x', 'y')
+
+        if not all_rings:
+            return None  # No rings found
+
+        # Calculate distance for each ring
+        closest_ring = min(
+            all_rings,
+            key=lambda ring: math.dist(
+                (ring['x'], ring['y']), (xyz['x'], xyz['y']))
+        )
+
+        # Fetch the actual object from the DB
+        return cm.FlowModelConceptRing.objects.get(location_id=closest_ring['location_id'])
+
+    def create_custom_rings(self, data, concept_ring):
+        common = self.get_common_attributes(data['original'])
+        ring_details = []
+
+        for custom_ring in data['custom']:
+            if custom_ring['tonnes']:
+                tonnes = custom_ring['tonnes']
+                volume = tonnes / data['aggregate']['avg_density']
+            else:
+                volume = custom_ring['volume']
+                tonnes = volume * data['aggregate']['avg_density']
+
+            level = custom_ring['level']
+            oredrive = custom_ring['oredrive']
+            ring_name = custom_ring['name']
+            alias = f"{level}_{oredrive}_{ring_name}"
+
+            ring = m.ProductionRing(
+                alias=alias,
+                prod_dev_code='P',
+                is_active=True,
+                comment='custom ring',
+                level=level,
+                status=common['status'],
+                x=concept_ring.x,
+                y=concept_ring.y,
+                z=concept_ring.z,
+                concept_ring=concept_ring,
+                oredrive=oredrive,
+                ring_number_txt=ring_name,
+                drill_complete_shift=common['drill_complete_shift'] or "",
+                charge_shift=common['charge_shift'] or "",
+                detonator_designed=common['detonator_designed'] or "",
+                detonator_actual=common['detonator_actual'] or "",
+                design_date=common['design_date'] or "",
+                fireby_date=common['fireby_date'] or "",
+                blastsolids_volume=volume,
+                designed_tonnes=tonnes,
+                draw_percentage=custom_ring['draw_percentage']
+            )
+            ring.save()
+            ring_details.append(
+                {'alias': alias, 'location_id': ring.location_id})
+
+        return ring_details
+
+    def get_common_attributes(self, original):
+        common = {
+            'drill_complete_shift': None,
+            'charge_shift': None,
+            'detonator_designed': None,
+            'detonator_actual': None,
+            'design_date': None,
+            'fireby_date': None,
+            'status': None
+        }
+
+        # Track unique values for fields that need to be consistent
+        detonator_designed_values = set()
+        detonator_actual_values = set()
+
+        for ring in original:
+            common['status'] = ring['status']
+
+            if ring['drill_complete_shift'] and (common['drill_complete_shift'] is None or ring['drill_complete_shift'] > common['drill_complete_shift']):
+                common['drill_complete_shift'] = ring['drill_complete_shift']
+            if ring['charge_shift'] and (common['charge_shift'] is None or ring['charge_shift'] > common['charge_shift']):
+                common['charge_shift'] = ring['charge_shift']
+
+            # Collect unique values for detonator fields
+            if ring['detonator_designed']:
+                detonator_designed_values.add(ring['detonator_designed'])
+            if ring['detonator_actual']:
+                detonator_actual_values.add(ring['detonator_actual'])
+
+            # Latest design_date and fireby_date based on valid values
+            if ring['design_date'] and (common['design_date'] is None or ring['design_date'] > common['design_date']):
+                common['design_date'] = ring['design_date']
+            if ring['fireby_date'] and (common['fireby_date'] is None or ring['fireby_date'] > common['fireby_date']):
+                common['fireby_date'] = ring['fireby_date']
+
+        # If there is only one unique value for detonator fields, set it; otherwise, leave it as None
+        if len(detonator_designed_values) == 1:
+            common['detonator_designed'] = detonator_designed_values.pop()
+        if len(detonator_actual_values) == 1:
+            common['detonator_actual'] = detonator_actual_values.pop()
+
+        return common
+
+    def create_multifire_record(self, request, custom_rings):
+        data = request.data
+        # Validate original rings exist
+        if not data.get('original'):
+            raise ValueError("Missing or empty 'original' rings data")
+
+        # Extract necessary fields safely
+        aggregate = data.get('aggregate', {})
+
+        original_rings = [
+            {'location_id': ring['location_id'], 'alias': ring['alias']}
+            for ring in data['original']
+        ]
+
+        # Ensure required keys exist in aggregate data
+        required_keys = ['volume', 'designed_tonnes',
+                         'avg_density', 'avg_modelled_au', 'avg_modelled_cu']
+        for key in required_keys:
+            if key not in aggregate:
+                raise KeyError(f"Missing required aggregate key: {key}")
+
+        if not request.user.is_authenticated:
+            raise PermissionError(
+                "User must be authenticated to create a record.")
+
+        mfg = m.MultifireGroup(
+            name='',
+            level=data['original'][0]['level'],
+            total_volume=data['aggregate']['volume'],
+            total_tonnage=data['aggregate']['designed_tonnes'],
+            avg_density=data['aggregate']['avg_density'],
+            avg_au=data['aggregate']['avg_modelled_au'],
+            avg_cu=data['aggregate']['avg_modelled_cu'],
+            pooled_rings={'status': data['original']
+                          [0]['status'], 'rings': original_rings},
+            group_rings=custom_rings,
+            entered_by=request.user
+        )
+        mfg.save()
+
+    def deactivate_replaced_rings(self, data):
+        # Validate data structure
+        if not data.get('original'):
+            raise ValueError("Missing or empty 'original' rings data")
+
+        # Extract location IDs
+        location_ids = [rng['location_id']
+                        for rng in data['original'] if 'location_id' in rng]
+
+        if not location_ids:
+            raise ValueError("No valid location IDs provided.")
+
+        # Bulk update rings to deactivate in one query
+        m.ProductionRing.objects.filter(
+            location_id__in=location_ids).update(is_active=False)
+
+    def get_existing_groups(self, request):
+        print('fetching existing rings')
+
+        return {'msg': {'body': 'Good job', 'type': 'success'}}

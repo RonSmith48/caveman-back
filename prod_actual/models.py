@@ -21,7 +21,7 @@ class ProductionRing(Location):
     azimuth = models.DecimalField(
         max_digits=7, decimal_places=4, blank=True, null=True)
     burden = models.CharField(max_length=10, blank=True, null=True)
-    holes = models.SmallIntegerField()
+    holes = models.SmallIntegerField(blank=True, null=True)
     diameters = models.CharField(max_length=30, blank=True, null=True)
     drill_meters = models.DecimalField(
         max_digits=8, decimal_places=4, blank=True, null=True)
