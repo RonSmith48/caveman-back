@@ -266,6 +266,8 @@ class ConceptRingsFileHandler():
                             linked=successor,
                             direction='S'
                         )
+                    else:
+                        print(f'{b['id']}: Successor {succ_id} not in concept database.')
 
             # Create new links for predecessors
             if b['predecessors']:
@@ -279,3 +281,5 @@ class ConceptRingsFileHandler():
                             linked=predecessor,
                             direction='P'
                         )
+                    else:
+                        print(f'{b['id']}: Predecessor {succ_id} not in concept database.')
