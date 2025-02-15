@@ -175,7 +175,7 @@ class BlockAdjacencyFunctions():
             block=this_block, direction='S')
         if successors:
             for s in successors:
-                if s.description == this_block_desc:
+                if s.linked.description == this_block_desc:
                     return s
         else:
             return None

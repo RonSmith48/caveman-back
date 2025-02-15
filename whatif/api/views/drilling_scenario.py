@@ -217,6 +217,7 @@ class ScheduleFileHandler():
         if drv_name:
             return drv_name
         else:
+            print("guessing mining direction")
             return self.mining_dir_guess_method(concept_ring)
 
     def mining_dir_successor_method(self, concept_ring):
@@ -225,15 +226,16 @@ class ScheduleFileHandler():
         links = pcm.BlockLink.objects.filter(block=concept_ring)
         if links:
             for link in links:
-                if link.linked == drv_name:
+                if link.linked.description == drv_name:
                     if link.direction == 'S':
                         self.mining_direction = baf.determine_direction(
-                            concept_ring, link)
+                            concept_ring, link.block)
                     else:
                         self.mining_direction = baf.determine_direction(
-                            link, concept_ring)
+                            link.block, concept_ring)
                     return drv_name
         return None
+
 
     def mining_dir_guess_method(self, concept_ring):
         # if there is an alias, try to use that first
@@ -254,6 +256,7 @@ class ScheduleFileHandler():
                 return drv_name
         self.error_msg = f'There is no mining direction for oredrive {
             drv_name}, fix it and try again.'
+        print(self.error_msg)
         return None
 
     def marry_concept_rings(self):
@@ -272,6 +275,7 @@ class ScheduleFileHandler():
             if not concept_block:
                 self.error_msg = f'Unknown blastsolid: {
                     sched_block.blastsolids_id}'
+                print(self.error_msg)
                 return
 
             # Update the concept_ring field
@@ -670,7 +674,7 @@ class ScheduleFileHandler():
                         row.extend([0, 0])  # Fill with zeros if no data
                 writer.writerow(row)
 
-        """  queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
+            queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
 
         data = queryset.values('description', 'start_date__year', 'start_date__month') \
                     .annotate(
@@ -714,7 +718,7 @@ class ScheduleFileHandler():
                         row.append(month_data[month]['mtrs'])
                     else:
                         row.extend([0, 0])  # Fill with zeros if no data
-                writer.writerow(row) """
+                writer.writerow(row) 
 
     # ================ TESTING ====================
 
