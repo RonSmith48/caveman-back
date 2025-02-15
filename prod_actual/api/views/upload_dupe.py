@@ -195,7 +195,7 @@ class DupeFileHandler():
                                 fired_shift=shiftfired,
                                 status=status,
                                 multi_fire_group=row["IsMFGroup"],
-                                bog_complete=finished,
+                                bog_complete_shift=finished,
                                 x=self.number_fix(row["DesignCollarX"]),
                                 y=self.number_fix(row["DesignCollarY"]),
                                 z=self.number_fix(row["DesignCollarZ"])
