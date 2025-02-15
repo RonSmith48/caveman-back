@@ -8,7 +8,7 @@ db.sqlite3
 .DS_Store
 
 # If using Django migrations
-/migrations
+/migrations/
 */migrations/*
 !*/migrations/__init__.py
 
@@ -94,3 +94,13 @@ Thumbs.db
 ehthumbs.db
 Pipfile
 Pipfile.lock
+
+whatif/migrations/__init__.py
+users/migrations/__init__.py
+stp/migrations/__init__.py
+settings/migrations/__init__.py
+report/migrations/__init__.py
+prod_concept/migrations/__init__.py
+prod_actual/migrations/__init__.py
+logs/migrations/__init__.py
+common/migrations/__init__.py
