@@ -176,7 +176,7 @@ class BlockAdjacencyFunctions():
         if successors:
             for s in successors:
                 if s.linked.description == this_block_desc:
-                    return s
+                    return s.linked
         else:
             return None
 
@@ -297,11 +297,10 @@ class BlockAdjacencyFunctions():
         return adjacency.adjacent_block if adjacency else None
 
     def get_farthest_block(self, this_block, those_blocks):
-        baf = BlockAdjacencyFunctions()
         farthest_block = None
         max_distance = 0
         for block in those_blocks:
-            distance = baf.get_dist_to_block(this_block, block)
+            distance = self.get_dist_to_block(this_block, block)
             if distance > max_distance:
                 max_distance = distance
                 farthest_block = block
