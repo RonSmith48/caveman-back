@@ -214,14 +214,17 @@ class BlockAdjacencyFunctions():
     def step_dist_using_successor_method(self, this_block, distance):
         dist = 0
         final_block = this_block
+
         while dist < distance:
-            next_block = self.step_using_successor_method(this_block)
+            next_block = self.step_using_successor_method(final_block)
             if next_block:
                 final_block = next_block
                 dist = self.get_dist_to_block(this_block, next_block)
             else:
                 return final_block
+
         return final_block
+
 
     def step_dist_using_mining_direction(self, this_block, mining_direction, distance):
         last_under_dist = None
