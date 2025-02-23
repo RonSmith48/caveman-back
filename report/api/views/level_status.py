@@ -131,9 +131,12 @@ class LevelStatusReport():
                 designed['mtrs'] += self.ring.drill_meters
 
             elif self.ring.status == 'Drilled':
+
+                #TODO: Fix this ===============================
+                '''
                 if self.ring.has_blocked_holes:
                     drilled.append(
-                        {"ring": self.ring.ring_number_txt, "is_blocked": self.ring.has_blocked_holes})
+                        {"ring": self.ring.ring_number_txt, "is_blocked": self.ring.has_blocked_holes})'''
 
                 if latest_drilled_ring is None or self.ring.drill_complete_shift > latest_drilled_ring.drill_complete_shift:
                     latest_drilled_ring = self.ring
@@ -148,11 +151,12 @@ class LevelStatusReport():
                 if self.ring.multi_fire_group != '(M)':
                     primary_ring = self.ring
 
+        '''
         if latest_drilled_ring:
             # Ensure it's not already in the list
             if latest_drilled_ring.ring_number_txt not in [ring["ring"] for ring in drilled]:
                 drilled.append({"ring": latest_drilled_ring.ring_number_txt,
-                               "is_blocked": latest_drilled_ring.has_blocked_holes})
+                               "is_blocked": latest_drilled_ring.has_blocked_holes})'''
 
         bogging = self.calculate_bogging_ring(primary_ring, designed_tonnes)
 

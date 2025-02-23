@@ -14,6 +14,7 @@ import prod_concept.api.serializers as s
 
 from settings.models import ProjectSetting
 from prod_actual.models import ProductionRing
+from prod_concept.api.views.mining_direction import MiningDirectionView
 from common.functions.block_adjacency import BlockAdjacencyFunctions
 
 from datetime import datetime
@@ -57,6 +58,10 @@ class ConceptRingsFileHandler():
         b = BlockAdjacencyFunctions()
         b.remap_levels(self.touched_levels)
         self.update_block_links()
+
+        #=============== prob one time for now
+        #md = MiningDirectionView()
+        #md.update_mining_direction()
 
         if self.error_msg:
             return {'msg': self.error_msg, 'msg_type': 'error'}
