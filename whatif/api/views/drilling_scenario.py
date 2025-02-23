@@ -15,13 +15,12 @@ from time import strftime
 from django.utils import timezone
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.db import transaction
-from django.db.models import Sum, F, Q, ExpressionWrapper
+from django.db.models import Sum, F, Q, ExpressionWrapper, Min
 from django.db.models.functions import Abs, ExtractMonth, ExtractYear
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pprint import pprint
 from copy import deepcopy
-
 
 import csv
 import calendar
@@ -69,6 +68,9 @@ class ScheduleFileHandler():
         self.assumed_mtrs_in_start_drive = 900
         self.assumed_rings_in_start_drive = 10
 
+        self.ring_count = 0
+        self.meter_count = 0
+
         self.scenario = None
         # self.scenario = m.Scenario.objects.get(scenario=38)
 
@@ -76,7 +78,7 @@ class ScheduleFileHandler():
         self.last_designed_block = None
         self.is_designed = False
         self.reporting_interval = 'monthly'
-        self.filename = 'schedule.csv'
+        self.filename = 'results.csv'
         self.split_month = False
 
     def handle_schedule_file(self, request, file, scenario_name):
@@ -188,7 +190,6 @@ class ScheduleFileHandler():
                 self.error_msg = f'Block with ID:{
                     sched_item.blastsolids_id} is not in the database.'
                 return
-
             drv_name = self.determine_mining_direction(concept_ring)
             if not drv_name:
                 return
@@ -229,10 +230,10 @@ class ScheduleFileHandler():
                 if link.linked.description == drv_name:
                     if link.direction == 'S':
                         self.mining_direction = baf.determine_direction(
-                            concept_ring, link.block)
+                            concept_ring, link.linked)
                     else:
                         self.mining_direction = baf.determine_direction(
-                            link.block, concept_ring)
+                            link.linked, concept_ring)
                     return drv_name
         return None
 
@@ -301,8 +302,7 @@ class ScheduleFileHandler():
         charged = None
 
         if sched_item.bogging_block:
-            charged = baf.step_dist(
-                sched_item.bogging_block, self.mining_direction, self.min_precharge_amount)
+            charged = baf.step_dist_using_successor_method(sched_item.bogging_block, self.min_precharge_amount)
 
         if sched_item.description:
             # might already be charged past calc pos
@@ -350,13 +350,9 @@ class ScheduleFileHandler():
             sched_by_drive = m.SchedSim.objects.filter(
                 scenario=self.scenario, description=oredrive).order_by('start_date')
             # set mining direction
-            direction = pcm.MiningDirection.objects.filter(
-                description=oredrive).first()
-            if direction:
-                self.mining_direction = direction.mining_direction
-            else:
-                print("Mining direction is broken")
-                exit()
+            first_block = sched_by_drive.first().bogging_block
+            self.mining_direction = self.mining_dir_successor_method(first_block)
+            
             current_drilled = self.get_current_last_block_of_status(
                 oredrive, 'Drilled')
 
@@ -414,12 +410,36 @@ class ScheduleFileHandler():
     def interfere_with_others(self, sched_item):
         # now for the fun stuff
         baf = BlockAdjacencyFunctions()
-        adj_drives = baf.get_adjacent_drives(sched_item.last_charge_block)
-        for adj_drive in adj_drives:
-            adj_mining_dir = pcm.MiningDirection.objects.get(
-                description=sched_item.description).mining_direction
-            adj_block = baf.get_block_from_adj_named_od(
-                sched_item.last_charge_block, adj_drive)
+        
+        # get adjacent blocks not in same oredrive
+        adjacent_blocks = (
+            pcm.BlockAdjacency.objects
+            .filter(block=sched_item.last_charge_block)  # Get adjacent blocks
+            .exclude(adjacent_block__description=sched_item.last_charge_block.description)  # Exclude current oredrive
+        )
+
+        # Get distinct oredrives with at least one block from each
+        distinct_adjacent_blocks = (
+            adjacent_blocks
+            .values('adjacent_block__description')  # Group by oredrive description
+            .annotate(block_id=Min('adjacent_block__location_id'))  # Pick the smallest ID as a representative
+        )
+
+        # Get the actual block objects using the selected block IDs
+        selected_blocks = pcm.BlockAdjacency.objects.filter(
+            id__in=[desc['block_id'] for desc in distinct_adjacent_blocks]
+        )
+
+        # If no adjacent blocks exist, return None
+        selected_blocks = list(selected_blocks) if selected_blocks.exists() else None
+
+        if selected_blocks is None:
+            return None
+
+        for sb in selected_blocks:
+            adj_drive = sb.description
+            adj_mining_dir = self.mining_dir_successor_method(sb)
+            adj_block = sb
             adj_schedsim = self.get_adj_schedsim(adj_drive, sched_item)
             drill_1 = baf.step_dist(
                 adj_block, adj_mining_dir, self.min_amount_drilled)
@@ -544,23 +564,22 @@ class ScheduleFileHandler():
                         if last_drilled:
                             self.get_blocks_between(last_drilled, sched)
                             prev_schedule_block = sched.last_drill_block
-
                         else:
                             # no previous drilled, is start of drive
                             first_block = baf.find_first_block(
                                 drive, self.mining_direction)
                             self.get_blocks_between(
                                 first_block, sched, count_first=True)
-
                             prev_schedule_block = sched.last_drill_block
+        print("finished")#================
 
     def get_blocks_between(self, start_block, sched_item, count_first=False):
         # if start of drive 'Start_block' is None.
         baf = BlockAdjacencyFunctions()
-        self.check_designed(sched_item)
+        self.ring_count = 0
+        self.meter_count = 0
 
-        ring_count = 0
-        meter_count = 0
+        self.check_designed(sched_item)
 
         if not start_block and sched_item.last_drill_block:
             print("not given both blocks", sched_item.description)
@@ -571,30 +590,38 @@ class ScheduleFileHandler():
 
         is_correct_dir = baf.is_in_general_mining_direction(
             current_block, sched_item.last_drill_block, self.mining_direction)
+        dist = baf.get_dist_to_block(current_block, sched_item.last_drill_block)
+        if dist > 50:
+            print("Dist too great", current_block.description, sched_item.last_drill_block.description, dist)
+            return
         if is_correct_dir:
             while current_block != sched_item.last_drill_block:
                 if not count_first:
-                    current_block = baf.step_next_block(
+                    next_block = baf.step_next_block(
                         current_block, self.mining_direction)
+                    current_block = next_block
+
                 count_first = False
                 if current_block:
-                    if self.is_designed:
-                        rings_in_block = pam.ProductionRing.objects.filter(
-                            is_active=True, concept_ring=current_block)
-                        for ring in rings_in_block:
-                            ring_count += 1
-                            meter_count += ring.drill_meters
-                    else:
-                        ring_count += 1
-                        meter_count += self.assumed_mtrs_in_concept_ring
+                    self.tally(current_block)
                 else:
                     print("There was an unexpected end to blocks in drive",
-                          sched_item.description)
+                        sched_item.description)
                     return
 
-        sched_item.sum_drill_rings_from_prev = ring_count
-        sched_item.sum_drill_mtrs_from_prev = meter_count
+        sched_item.sum_drill_rings_from_prev = self.ring_count
+        sched_item.sum_drill_mtrs_from_prev = self.meter_count
         sched_item.save()
+
+    def tally(self, current_block):
+        rings_in_block = pam.ProductionRing.objects.filter(is_active=True, concept_ring=current_block)
+        if rings_in_block:
+            for ring in rings_in_block:
+                self.ring_count += 1
+                self.meter_count += ring.drill_meters
+        else:
+            self.ring_count += 1
+            self.meter_count += self.assumed_mtrs_in_concept_ring
 
     def check_designed(self, sched):
         baf = BlockAdjacencyFunctions()
@@ -607,6 +634,7 @@ class ScheduleFileHandler():
     # =============== REPORTING ===================
 
     def generate_schedule_csv(self):
+        print("generating csv")
         queryset = m.SchedSim.objects.filter(
             scenario=self.scenario, start_date__isnull=False)
 
