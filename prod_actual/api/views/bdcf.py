@@ -1098,6 +1098,58 @@ class BDCFRings():
             location_id__in=location_ids).update(is_active=False)
 
     def get_existing_groups(self, request):
-        print('fetching existing rings')
+        groups = []
+        mfg = m.MultifireGroup.objects.filter(is_active=True)
+        for g in mfg:
 
-        return {'msg': {'body': 'Good job', 'type': 'success'}}
+            touched = True
+            created_rings_info = self.get_created_rings_status(g.group_rings)
+            if g.pooled_rings['status'] == created_rings_info['status'] and not created_rings_info['touched']:
+                touched = False
+            row = {'id': g.multifire_group_id,
+                   'date': g.created_at,
+                   'level': g.level,
+                   'contributor': {
+                       "full_name": g.entered_by.get_full_name() if g.entered_by else "Anonymous User",
+                       "avatar": g.entered_by.avatar if g.entered_by.avatar else "default.svg",
+                       "bg_colour": g.entered_by.bg_colour if g.entered_by.bg_colour else "#f5f5f5"
+                   } if g.entered_by else None,
+                   'touched': touched,
+                   'pooled_rings': g.pooled_rings,
+                   'group_rings': created_rings_info['rings'],
+                   'oredrive': created_rings_info['oredrive']}
+            groups.append(row)
+
+        return groups
+
+    def get_created_rings_status(self, group_rings):
+        oredrive = None
+        oredrive_same = True
+        status_same = True
+        status = None
+        rings_list = []
+
+        for r in group_rings:
+            ring = m.ProductionRing.objects.get(location_id=r['location_id'])
+            ring_status = ring.status
+            ring_oredrive = ring.oredrive
+
+            if status and ring_status != status:
+                status_same = False
+            else:
+                status = ring_status
+
+            if oredrive and ring_oredrive != oredrive:
+                oredrive_same = False
+            else:
+                oredrive = ring_oredrive
+
+            ring_info = {'location_id': r['location_id'],
+                         'alias': r['alias'],
+                         'status': ring_status}
+            rings_list.append(ring_info)
+
+        if oredrive_same == False:
+            oredrive = 'Multiple'
+
+        return {'touched': not status_same, 'status': status, 'rings': rings_list, 'oredrive': oredrive}
