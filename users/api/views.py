@@ -290,7 +290,7 @@ class CustomTokenRefreshView(TokenRefreshView):
             return Response({'msg': {'type': 'error', 'body': 'Refresh token has expired. Please log in again.'}},
                             status=status.HTTP_401_UNAUTHORIZED)
 
-        except InvalidToken:
+        except (TokenError, InvalidToken):
             # Handle invalid token case
             logger.user_activity("Invalid refresh token", extra={
                 'url': request.build_absolute_uri(),
@@ -300,17 +300,6 @@ class CustomTokenRefreshView(TokenRefreshView):
 
             return Response({'msg': {'type': 'error', 'body': 'Invalid refresh token. Please try logging in again.'}},
                             status=status.HTTP_401_UNAUTHORIZED)
-
-        except TokenError as e:
-            # General token-related errors
-            logger.error("Token refresh failed", exc_info=True, extra={
-                'url': request.build_absolute_uri(),
-                'ip_address': request.META.get('REMOTE_ADDR'),
-                'error': str(e)
-            })
-
-            return Response({'msg': {'type': 'error', 'body': 'Token refresh failed. Please try again.'}},
-                            status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             # Catch any other general exceptions
