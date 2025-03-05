@@ -121,7 +121,12 @@ class MultifireGroup(models.Model):
     group_rings = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     entered_by = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True)
+        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='mf_creator')
+    # In actual fact, this should be called a deletion, custom rings are deleted.
+    # This is a record of who deleted and when.
+    deactivated_by = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='mf_deactivator')
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class RingComments(models.Model):
