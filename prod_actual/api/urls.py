@@ -25,6 +25,8 @@ urlpatterns = [
          name='bdcf-group-existing'),
     path('bdcf/groups/levels/<str:stat>/',
          bdcf.GroupFromStatusView.as_view(), name='bdcf-group-status'),
+    path('bdcf/groups/remove/<int:group>/',
+         bdcf.GroupRemove.as_view(), name='bdcf-group-remove'),
     path('bdcf/groups/rings-select/',
          bdcf.GroupRingSelection.as_view(), name='bdcf-group-rings'),
     path('bdcf/groups/rings-aggregate/',

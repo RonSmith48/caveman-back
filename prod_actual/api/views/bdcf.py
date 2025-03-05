@@ -205,6 +205,13 @@ class GroupsExisting(APIView):
         return Response(group_data, status=status.HTTP_200_OK)
 
 
+class GroupRemove(APIView):
+    def get(self, request, group, *args, **kwargs):
+        bdcf = BDCFRings()
+        reply = bdcf.delete_group(request, group)
+        return Response(reply, status=status.HTTP_200_OK)
+
+
 class LocationDetailView(APIView):
     def get(self, request, location_id, *args, **kwargs):
         bdcf = BDCFRings()
@@ -996,7 +1003,7 @@ class BDCFRings():
             ring_details.append(
                 {'alias': alias, 'location_id': ring.location_id})
 
-        return ring_details
+        return {'concept_ring': concept_ring.location_id, 'ring_details': ring_details}
 
     def get_common_attributes(self, original):
         common = {
@@ -1075,8 +1082,8 @@ class BDCFRings():
             avg_au=data['aggregate']['avg_modelled_au'],
             avg_cu=data['aggregate']['avg_modelled_cu'],
             pooled_rings={'status': data['original']
-                          [0]['status'], 'rings': original_rings},
-            group_rings=custom_rings,
+                          [0]['status'], 'concept_ring': custom_rings['concept_ring'], 'rings': original_rings},
+            group_rings=custom_rings['ring_details'],
             entered_by=request.user
         )
         mfg.save()
@@ -1153,3 +1160,37 @@ class BDCFRings():
             oredrive = 'Multiple'
 
         return {'touched': not status_same, 'status': status, 'rings': rings_list, 'oredrive': oredrive}
+
+    def delete_group(self, request, group):
+        try:
+            mf_group = m.MultifireGroup.objects.get(multifire_group_id=group)
+
+            # Reactivate original rings in one query
+            pooled_ring_ids = [p['location_id']
+                               for p in mf_group.pooled_rings['rings']]
+            m.ProductionRing.objects.filter(
+                location_id__in=pooled_ring_ids).update(is_active=True)
+
+            # Delete custom rings in one query
+            group_ring_ids = [r['location_id'] for r in mf_group.group_rings]
+            m.ProductionRing.objects.filter(
+                location_id__in=group_ring_ids).delete()
+
+            # Delete private concept ring
+            cm.FlowModelConceptRing.objects.filter(
+                location_id=mf_group.pooled_rings['concept_ring']).delete()
+
+            # Deactivate multifire group
+            mf_group.is_active = False
+            mf_group.deactivated_by = request.user
+            mf_group.save()
+
+            return True  # Indicate successful deletion
+
+        except m.MultifireGroup.DoesNotExist:
+            return False  # Group not found
+
+        except Exception as e:
+            # Log the error if you have logging enabled
+            print(f"Error deleting group: {e}")
+            return False
