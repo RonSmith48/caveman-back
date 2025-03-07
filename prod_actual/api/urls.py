@@ -19,6 +19,8 @@ urlpatterns = [
     path('bdcf/drilled/<str:lvl_od>/',
          bdcf.DrillEntryRingsListView.as_view(), name='bdcf-drill'),
     path('bdcf/fire/', bdcf.FireEntryView.as_view(), name='bdcf-fire'),
+    path('bdcf/fire/<int:lvl>/',
+         bdcf.FiredRings.as_view(), name='bdcf-fire'),
     path('bdcf/groups/custom-rings/',
          bdcf.GroupCustomRings.as_view(), name='bdcf-group-custom'),
     path('bdcf/groups/existing/', bdcf.GroupsExisting.as_view(),

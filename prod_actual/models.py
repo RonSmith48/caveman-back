@@ -166,6 +166,7 @@ class RingState(models.Model):
             {"pri_state": "Charged", "sec_state": "Incomplete"},
             {"pri_state": "Charged", "sec_state": "Charged Short"},
             {"pri_state": "Charged", "sec_state": "Recharged Holes"},
+            {"pri_state": "Bogging", "sec_state": None},
             {"pri_state": "Complete", "sec_state": None},
             {"pri_state": "Abandoned", "sec_state": None},
         ]
@@ -196,6 +197,7 @@ class RingStateChange(models.Model):
     mtrs_drilled = models.DecimalField(
         max_digits=5, decimal_places=1, default=0)
     holes_completed = models.SmallIntegerField(blank=True, null=True)
+    detail = models.JSONField(blank=True, null=True)
 
 
 class RingLink(models.Model):

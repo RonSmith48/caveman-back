@@ -58,6 +58,8 @@ class DupeFileHandler():
         self.dupe_shkey = Shkey.generate_shkey(date, 'd')
         print("reading the dupe")
         self.read_dupe(f)
+        print("creating multifires")
+        self.create_multifire_entries()
         print("finished")
 
         # All this is feedback msg to the user
@@ -303,3 +305,6 @@ class DupeFileHandler():
             return
 
         return formatted
+
+    def create_multifire_entries(self):
+        mf = m.ProductionRing.objects.filter(is_active=True)

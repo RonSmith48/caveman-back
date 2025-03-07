@@ -166,8 +166,25 @@ class ChargeEntryRingsListView(APIView):
 class FireEntryView(APIView):
     def get(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-        rings = bdcf.get_blocked()
+        rings = bdcf.get_levels_list_with_status('Charged')
         return Response(rings, status=status.HTTP_200_OK)
+
+    def post(self, request, *args, **kwargs):
+        bdcf = BDCFRings()
+        rings = bdcf.fire_ring(request)
+        return Response(rings, status=status.HTTP_200_OK)
+
+
+class FiredRings(APIView):
+    def get(self, request, lvl, *args, **kwargs):
+        bdcf = BDCFRings()
+        method_args = {'create_from': 'Charged', 'level': lvl}
+        charged_rings = bdcf.get_rings_of_status_on_level(method_args)
+        method_args['create_from'] = 'Bogging'
+        fired_rings = bdcf.get_rings_of_status_on_level(method_args)
+        fired_detail = bdcf.get_fired_ring_detail(fired_rings)
+
+        return Response({'charged_rings': charged_rings, 'fired_rings': fired_detail}, status=status.HTTP_200_OK)
 
 
 class GroupFromStatusView(APIView):
@@ -180,7 +197,7 @@ class GroupFromStatusView(APIView):
 class GroupRingSelection(APIView):
     def post(self, request, *args, **kwargs):
         bdcf = BDCFRings()
-        lvl_rings = bdcf.get_rings_of_status_on_level(request)
+        lvl_rings = bdcf.get_rings_of_status_on_level(request.data)
         return Response(lvl_rings, status=status.HTTP_200_OK)
 
 
@@ -279,9 +296,12 @@ class BDCFRings():
             stats['in_flow'] = prod_ring.in_flow
             stats['comment'] = prod_ring.comment
             stats['flow_tonnes'] = prod_ring.concept_ring.pgca_modelled_tonnes
+            summed = (prod_ring.designed_tonnes * prod_ring.draw_percentage) + \
+                prod_ring.draw_deviation + prod_ring.overdraw_amount
 
         total_tonnes = sum(entry.bogged_tonnes for entry in bogged_entries)
         stats['bogged_tonnes'] = total_tonnes
+        stats['remaining'] = round((summed - total_tonnes), 0)
 
         # Serialize the data as needed
         data = [
@@ -447,8 +467,7 @@ class BDCFRings():
 
         return list(rings)
 
-    def get_rings_of_status_on_level(self, request):
-        data = request.data
+    def get_rings_of_status_on_level(self, data):
         status = data.get('create_from')
         level = data.get('level')
 
@@ -456,7 +475,8 @@ class BDCFRings():
             m.ProductionRing.objects
             .filter(is_active=True, status=status, level=level)
             .order_by('alias')  # Order by alias
-            .values('alias', 'location_id')  # Return only required fields
+            # Return only required fields
+            .values('alias', 'location_id', 'fired_shift')
         )
 
         return list(rings_qs)
@@ -1194,3 +1214,43 @@ class BDCFRings():
             # Log the error if you have logging enabled
             print(f"Error deleting group: {e}")
             return False
+
+    def fire_ring(self, request):
+        print("firing ring", request.data)
+        return
+
+    def get_fired_ring_detail(self, fired_rings):
+        rings = []
+        for fr in fired_rings:
+            fr_copy = fr.copy()  # Prevent modifying original data
+            location_id = fr_copy['location_id']
+            movements = self.get_bogging_movements(location_id)
+            fr_copy['remaining'] = movements['stats']['remaining']
+
+            try:
+                rsc = m.RingStateChange.objects.filter(
+                    is_active=True,
+                    prod_ring__location_id=location_id,
+                    state__pri_state='Bogging',
+                    state__sec_state=None
+                ).first()
+
+                if rsc and rsc.user:
+                    fr_copy['contributor'] = {
+                        "full_name": rsc.user.get_full_name() if rsc.user else "Anonymous User",
+                        "avatar": rsc.user.avatar or "default.svg",
+                        "bg_colour": rsc.user.bg_colour or "#f5f5f5"
+                    }
+                else:
+                    fr_copy['contributor'] = None
+
+            except (AttributeError, m.RingStateChange.DoesNotExist) as e:
+                # Log the error instead of returning False
+                self.custom_logger.error(
+                    f"Error in get_fired_ring_detail: {e}")
+                return []
+
+            rings.append(fr_copy)
+        print('rings', rings)
+
+        return rings
