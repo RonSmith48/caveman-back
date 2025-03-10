@@ -21,6 +21,7 @@ def ensure_mandatory_ring_states():
         {"pri_state": "Charged", "sec_state": "Incomplete"},
         {"pri_state": "Charged", "sec_state": "Charged Short"},
         {"pri_state": "Charged", "sec_state": "Recharged Holes"},
+        {"pri_state": "Bogging", "sec_state": None},
         {"pri_state": "Complete", "sec_state": None},
         {"pri_state": "Abandoned", "sec_state": None},
     ]
