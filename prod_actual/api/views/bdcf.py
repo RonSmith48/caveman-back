@@ -476,7 +476,7 @@ class BDCFRings():
             .filter(is_active=True, status=status, level=level)
             .order_by('alias')  # Order by alias
             # Return only required fields
-            .values('alias', 'location_id', 'fired_shift')
+            .values('alias', 'location_id', 'fired_shift', 'oredrive')
         )
 
         return list(rings_qs)
@@ -1216,8 +1216,103 @@ class BDCFRings():
             return False
 
     def fire_ring(self, request):
-        print("firing ring", request.data)
-        return
+        data = request.data
+        sk = Shkey()
+        date = data['date']
+        shift = data['shift']
+        location_id = data['location_id']
+        oredrive = data['oredrive']
+
+        shkey = sk.generate_shkey(date, shift)
+        replacing = []  # Ensure 'replacing' is always a list, even if empty
+
+        try:
+            with transaction.atomic():
+                ensure_mandatory_ring_states()
+
+                # Get ring(s) being replaced
+                completed = m.ProductionRing.objects.filter(
+                    is_active=True, status='Bogging', oredrive=oredrive
+                )
+
+                # Update the status of the replaced rings and collect their IDs
+                for c in completed:
+                    replacing.append(c.location_id)
+                    c.status = 'Complete'
+                    c.bog_complete_shift = shkey
+                    c.save()
+
+                # Get the ring to be fired
+                firing = m.ProductionRing.objects.select_for_update().get(location_id=location_id)
+                firing.status = "Bogging"
+                firing.fired_shift = shkey
+                firing.save()
+
+                # Get the 'Bogging' state
+                bogging_state = m.RingState.objects.get(
+                    pri_state='Bogging', sec_state=None)
+
+                # Create a state change entry
+                m.RingStateChange.objects.create(
+                    prod_ring=firing,
+                    shkey=shkey,
+                    user=request.user,
+                    state=bogging_state,
+                    # Will store an empty list if nothing is replaced
+                    detail={'replacing': replacing}
+                )
+
+            return {'msg': {'body': 'Awesome, you nailed it', 'type': 'success'}}
+
+        except m.ProductionRing.DoesNotExist:
+            return {'msg': {'body': 'Error: Production ring not found', 'type': 'error'}}
+        except m.RingState.DoesNotExist:
+            return {'msg': {'body': 'Error: Bogging state not found', 'type': 'error'}}
+        except Exception as e:
+            return {'msg': {'body': f'Unexpected error: {str(e)}', 'type': 'error'}}
+
+    def unfire_ring(self, request):
+        data = request.data
+        location_id = data['location_id']
+
+        try:
+            with transaction.atomic():
+                # Find the most recent active RingStateChange entry
+                ring_state_change = m.RingStateChange.objects.filter(
+                    prod_ring__location_id=location_id,
+                    state__pri_state='Bogging',  # Ensure it's a 'Bogging' entry
+                    is_active=True
+                ).select_for_update().order_by('-created_at').first()
+
+                if not ring_state_change:
+                    return {'msg': {'body': 'Error: No active firing record found', 'type': 'error'}}
+
+                # Get the rings that were replaced
+                replacing = ring_state_change.detail['replacing'] if ring_state_change.detail else [
+                ]
+
+                # Set the deactivation state
+                ring_state_change.is_active = False
+                ring_state_change.deactivated_by = request.user
+                ring_state_change.save()
+
+                # Change status of replaced rings back to "Bogging"
+                if replacing:
+                    m.ProductionRing.objects.filter(
+                        location_id__in=replacing).update(status='Bogging', bog_complete_shift=None)
+
+                # Deactivate the primary fired ring
+                fired_ring = ring_state_change.prod_ring
+                fired_ring.status = 'Charged'  # Default status before being fired
+                fired_ring.fired_shift = None
+                fired_ring.save()
+
+            return {'msg': {'body': 'Reversal complete, ring unfired successfully', 'type': 'success'}}
+
+        except m.RingStateChange.DoesNotExist:
+            return {'msg': {'body': 'Error: No valid state change found', 'type': 'error'}}
+        except Exception as e:
+            return {'msg': {'body': f'Unexpected error: {str(e)}', 'type': 'error'}}
 
     def get_fired_ring_detail(self, fired_rings):
         rings = []
@@ -1251,6 +1346,5 @@ class BDCFRings():
                 return []
 
             rings.append(fr_copy)
-        print('rings', rings)
 
         return rings
