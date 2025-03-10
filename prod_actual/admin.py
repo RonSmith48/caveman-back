@@ -3,7 +3,7 @@ import prod_actual.models as m
 
 
 class ProdActualAdmin(admin.ModelAdmin):
-    list_display = ['alias', 'description']
+    list_display = ['alias', 'description', 'location_id']
     search_fields = ('alias', 'description', 'level')
 
 
