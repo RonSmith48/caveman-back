@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from common.functions.constants import MANDATORY_RING_STATES
 import prod_actual.models as m
 
 
@@ -31,3 +32,14 @@ class BoggedTonnesSerializer(serializers.ModelSerializer):
         model = m.BoggedTonnes
         fields = ['id', 'production_ring', 'bogged_tonnes',
                   'shkey', 'entered_by', 'datetime_stamp']
+
+
+class RingStateSerializer(serializers.ModelSerializer):
+    is_mandatory = serializers.SerializerMethodField()
+
+    class Meta:
+        model = m.RingState
+        fields = ["id", "pri_state", "sec_state", "is_mandatory"]
+
+    def get_is_mandatory(self, obj):
+        return {"pri_state": obj.pri_state, "sec_state": obj.sec_state} in MANDATORY_RING_STATES

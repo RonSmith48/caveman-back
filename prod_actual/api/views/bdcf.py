@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from common.functions.common_methods import CommonMethods
 from common.functions.shkey import Shkey
-from common.functions.ring_state import ensure_mandatory_ring_states
+from prod_actual.api.views.ring_state import ConditionsAndStates
 from common.functions.status import Status
 
 from datetime import timedelta, date
@@ -141,7 +141,8 @@ class ChargeEntryView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
-        ensure_mandatory_ring_states()
+        cas = ConditionsAndStates()
+        cas.ensure_mandatory_ring_states()
         bdcf = BDCFRings()
         return bdcf.charge_drilled_ring(request)
 
@@ -1228,7 +1229,8 @@ class BDCFRings():
 
         try:
             with transaction.atomic():
-                ensure_mandatory_ring_states()
+                cas = ConditionsAndStates()
+                cas.ensure_mandatory_ring_states()
 
                 # Get ring(s) being replaced
                 completed = m.ProductionRing.objects.filter(
