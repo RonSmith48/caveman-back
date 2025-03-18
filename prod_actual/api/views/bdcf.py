@@ -12,13 +12,14 @@ from rest_framework.response import Response
 from common.functions.common_methods import CommonMethods
 from common.functions.shkey import Shkey
 from prod_actual.api.views.ring_state import ConditionsAndStates
+from prod_actual.api.views.prod_orphans import ProdOrphans
 from common.functions.status import Status
 
 from datetime import timedelta, date
 
 import prod_actual.models as m
-import prod_concept.models as cm
 import prod_actual.api.serializers as s
+import prod_concept.models as cm
 import prod_concept.api.serializers as cs
 import users.api.serializers as us
 import json
@@ -103,34 +104,9 @@ class DrillEntryView(APIView):
         return Response(drives, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
-        data = request.data
-        location_id = data.get('location_id')
-        if not location_id:
-            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            ring = m.ProductionRing.objects.get(location_id=location_id)
-
-            drilled_meters = data.get('drilled_mtrs')
-            ring.drilled_meters = None if drilled_meters == "" else drilled_meters
-
-            if not data.get('half_drilled'):
-                ring.drill_complete_shift = data.get(
-                    'date', ring.drill_complete_shift)
-                ring.status = data.get('status', ring.status)
-
-            # Save the updated model instance
-            ring.save()
-
-            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
-
-        except m.ProductionRing.DoesNotExist:
-            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}}, status=status.HTTP_404_NOT_FOUND)
-
-        except Exception as e:
-            # Handle unexpected errors
-            print("error", str(e))
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        bdcf = BDCFRings()
+        reply = bdcf.drill_ring(request)
+        return Response(reply, status=status.HTTP_200_OK)
 
 
 class ChargeEntryView(APIView):
@@ -180,12 +156,13 @@ class FiredRings(APIView):
     def get(self, request, lvl, *args, **kwargs):
         bdcf = BDCFRings()
         method_args = {'create_from': 'Charged', 'level': lvl}
-        charged_rings = bdcf.get_rings_of_status_on_level(method_args)
+        charged = bdcf.get_rings_of_status_on_level(method_args)
+        charged_rings = bdcf.add_orphan_status(charged)
         method_args['create_from'] = 'Bogging'
         fired_rings = bdcf.get_rings_of_status_on_level(method_args)
         fired_detail = bdcf.get_fired_ring_detail(fired_rings)
 
-        return Response({'charged_rings': charged_rings, 'fired_rings': fired_detail}, status=status.HTTP_200_OK)
+        return Response({'charged_rings': charged_rings, 'fired_rings': fired_detail, 'msg': bdcf.msg}, status=status.HTTP_200_OK)
 
 
 class GroupFromStatusView(APIView):
@@ -247,6 +224,7 @@ class StatusRollbackView(APIView):
 class BDCFRings():
     def __init__(self) -> None:
         self.error_msg = None
+        self.msg = None
 
     def get_rings_status(self, level, status):
         pass
@@ -296,13 +274,20 @@ class BDCFRings():
             stats['draw_deviation'] = prod_ring.draw_deviation
             stats['in_flow'] = prod_ring.in_flow
             stats['comment'] = prod_ring.comment
-            stats['flow_tonnes'] = prod_ring.concept_ring.pgca_modelled_tonnes
             summed = (prod_ring.designed_tonnes * prod_ring.draw_percentage) + \
                 prod_ring.draw_deviation + prod_ring.overdraw_amount
+            if prod_ring.concept_ring:
+                stats['flow_tonnes'] = prod_ring.concept_ring.pgca_modelled_tonnes
+            else:
+                stats['flow_tonnes'] = 0
+                self.msg = {
+                    'body': f'{prod_ring.alias} is an orphaned ring', 'type': 'warning'}
 
         total_tonnes = sum(entry.bogged_tonnes for entry in bogged_entries)
         stats['bogged_tonnes'] = total_tonnes
         stats['remaining'] = round((summed - total_tonnes), 0)
+
+        self.update_prodring_bogged_tonnes(location_id, total_tonnes)
 
         # Serialize the data as needed
         data = [
@@ -321,6 +306,17 @@ class BDCFRings():
         ]
 
         return {'data': data, 'stats': stats}
+
+    def update_prodring_bogged_tonnes(self, location_id, bogged_tonnes):
+        try:
+            production_ring = m.ProductionRing.objects.get(
+                location_id=location_id)
+            production_ring.bogged_tonnes = bogged_tonnes
+            production_ring.save(update_fields=["bogged_tonnes"])
+            return True  # Return True to indicate success
+        except m.ProductionRing.DoesNotExist:
+            self.error_msg = "Could not update bogged tonnes for prod ring"
+            return False  # Return False if the production ring is not found
 
     def add_bogging_movement(self, request, location_id):
         form_data = request.data
@@ -1264,7 +1260,7 @@ class BDCFRings():
                     detail={'replacing': replacing}
                 )
 
-            return {'msg': {'body': 'Awesome, you nailed it', 'type': 'success'}}
+            return {'msg': {'body': 'Ring fired successfully', 'type': 'success'}}
 
         except m.ProductionRing.DoesNotExist:
             return {'msg': {'body': 'Error: Production ring not found', 'type': 'error'}}
@@ -1350,3 +1346,43 @@ class BDCFRings():
             rings.append(fr_copy)
 
         return rings
+
+    def add_orphan_status(self, charged):
+        po = ProdOrphans()
+
+        for entry in charged:
+            location_id = entry.get("location_id")
+            if location_id is not None:
+                entry["orphaned"] = po.is_orphan(location_id)
+
+        return charged
+
+    def drill_ring(self, request):
+        data = request.data
+        location_id = data.get('location_id')
+        if not location_id:
+            return {'msg': {'type': 'error', 'body': 'location_id is required'}}
+
+        try:
+            ring = m.ProductionRing.objects.get(location_id=location_id)
+
+            drilled_meters = data.get('drilled_mtrs')
+            ring.drilled_meters = None if drilled_meters == "" else drilled_meters
+
+            if not data.get('half_drilled'):
+                ring.drill_complete_shift = data.get(
+                    'date', ring.drill_complete_shift)
+                ring.status = data.get('status', ring.status)
+
+            # Save the updated model instance
+            ring.save()
+
+            return {'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}
+
+        except m.ProductionRing.DoesNotExist:
+            return {'msg': {'type': 'error', 'body': 'Production ring not found'}}
+
+        except Exception as e:
+            # Handle unexpected errors
+            print("error", str(e))
+            return {'msg': {'type': 'error', 'body': f'error: {str(e)}'}}

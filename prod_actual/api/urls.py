@@ -4,7 +4,7 @@ from prod_actual.api.views.ring_inspector import LevelListView, OredriveListView
 from prod_actual.api.views.upload_dupe import UploadDupeView
 from prod_actual.api.views.prod_orphans import OrphanListView, MatchProdConceptRingsView
 from prod_actual.api.views.location_history import LocationHistoryView
-from prod_actual.api.views.ring_state import RingStateListView
+from prod_actual.api.views.ring_state import RingStateListView, RingStateDeleteView
 import prod_actual.api.views.bdcf as bdcf
 
 urlpatterns = [
@@ -57,5 +57,7 @@ urlpatterns = [
     path('ring-inspector/<int:level>/<str:oredrive>/<str:ring_number_txt>/',
          RingView.as_view(), name='ring-view'),
     path('ring-states/', RingStateListView.as_view(), name='ring-state-list'),
+    path('ring-states/delete/', RingStateDeleteView.as_view(),
+         name='ring-state-delete'),
     path('upload/dupe/', UploadDupeView.as_view(), name='upload-dupe'),
 ]
