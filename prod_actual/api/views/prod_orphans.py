@@ -99,7 +99,8 @@ class ProdOrphans():
 
     def store_orphan_count(self):
         # Fetch orphans without a concept_ring
-        orphans = ProductionRing.objects.filter(concept_ring__isnull=True)
+        orphans = ProductionRing.objects.filter(
+            is_active=True, concept_ring__isnull=True)
         orphan_count = orphans.count()
 
         report_name = 'orphaned prod rings count'
@@ -113,3 +114,29 @@ class ProdOrphans():
             report={'orphan count': orphan_count}
         )
         return {'orphan count': orphan_count}
+
+    def is_orphan(self, location_id):
+        """
+        Checks if a given location is orphaned.
+
+        A location is considered orphaned if it has an active `ProductionRing` 
+        entry where `concept_ring` is NULL (i.e., it is not linked to a conceptual ring).
+
+        Args:
+            location_id (int): The ID of the location to check.
+
+        Returns:
+            bool: True if the location is orphaned, False otherwise.
+
+        Example:
+            >>> is_orphan(123)
+            True  # Location 123 is orphaned.
+
+            >>> is_orphan(456)
+            False  # Location 456 is linked to a conceptual ring.
+        """
+        return ProductionRing.objects.filter(
+            is_active=True,
+            concept_ring__isnull=True,
+            location_id=location_id
+        ).exists()
