@@ -226,9 +226,6 @@ class BDCFRings():
         self.error_msg = None
         self.msg = None
 
-    def get_rings_status(self, level, status):
-        pass
-
     def get_bogging_rings(self, request):
         current_rings = m.ProductionRing.objects.filter(
             is_active=True, status='Bogging').order_by('level', 'oredrive')
@@ -576,7 +573,7 @@ class BDCFRings():
         conditions = [
             {
                 # Secondary state (condition)
-                'attribute': state.state.sec_state,
+                'state': state.state.sec_state,
                 'shkey': state.shkey,  # Shift key
                 'comment': state.comment,
                 'operation_complete': state.operation_complete,
@@ -599,15 +596,23 @@ class BDCFRings():
         Input: request and a list of conditions to be created.
         For empty conditions list, pri_state = status, sec_state = None.
         '''
+        sk = Shkey()
+
+        data = request.data
+        d = data.get('date')
+        shift = data.get('shift')
+        shkey = data.get('shkey')
+        if not shkey:  # New entry
+            shkey = sk.generate_shkey(d, shift)
+
         # Extract required data from the request
-        location_id = request.data.get('location_id')
-        status = request.data.get('status')
+        location_id = data.get('location_id')
+        status = data.get('status')
         user = request.user if request.user.is_authenticated else None
-        shkey = request.data.get('shkey')  # More generic term for charge_shift
-        comment = request.data.get('comment')
-        operation_complete = request.data.get('operation_complete', True)
-        mtrs_drilled = request.data.get('mtrs_drilled', 0)
-        holes_completed = request.data.get('holes_completed')
+        comment = data.get('comment')
+        operation_complete = data.get('operation_complete', True)
+        mtrs_drilled = data.get('mtrs_drilled', 0)
+        holes_completed = data.get('holes_completed')
 
         # Get the associated ProductionRing
         try:
@@ -1348,6 +1353,7 @@ class BDCFRings():
         return rings
 
     def add_orphan_status(self, charged):
+        # True or False
         po = ProdOrphans()
 
         for entry in charged:
@@ -1376,6 +1382,9 @@ class BDCFRings():
 
             # Save the updated model instance
             ring.save()
+
+            conditions = request.data.get('conditions')
+            self.create_ring_conditions(request, conditions)
 
             return {'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}
 
