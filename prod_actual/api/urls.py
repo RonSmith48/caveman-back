@@ -5,7 +5,6 @@ from prod_actual.api.views.upload_dupe import UploadDupeView
 from prod_actual.api.views.prod_orphans import OrphanListView, MatchProdConceptRingsView
 from prod_actual.api.views.location_history import LocationHistoryView
 from prod_actual.api.views.ring_state import RingStateListView, RingStateDeleteView
-from prod_actual.api.views.geo_firings import FiredRingsView
 import prod_actual.api.views.bdcf as bdcf
 
 urlpatterns = [
@@ -39,7 +38,6 @@ urlpatterns = [
          bdcf.StatusRollbackView.as_view(), name='status-rollback'),
     path('bdcf/<int:location_id>/',
          bdcf.LocationDetailView.as_view(), name='location-detail'),
-    path('geo-fired/', FiredRingsView.as_view(), name='geo-fired'),
     path('history/<int:location_id>/',
          LocationHistoryView.as_view(), name='location-history'),
     path('orphaned-rings/', OrphanListView.as_view(), name='prod-orphans'),
