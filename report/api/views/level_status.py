@@ -7,12 +7,15 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from prod_actual.models import ProductionRing, BoggedTonnes
 from common.functions.common_methods import CommonMethods
+from common.functions.shkey import Shkey
 
-from datetime import timedelta, date
+from datetime import timedelta, datetime, date
+from itertools import groupby
+from operator import attrgetter
 
 import report.models as m
+import prod_actual.models as pm
 import json
 
 
@@ -23,6 +26,14 @@ class LevelStatusReportView(APIView):
         return Response(report, status=status.HTTP_200_OK)
 
 
+class LevelStatusCreateReportView(APIView):
+    def get(self, request, *args, **kwargs):
+        lsr = LevelStatusReport()
+        reply = lsr.create_ls_report(request)
+
+        return Response(reply, status=status.HTTP_200_OK)
+
+
 class LevelStatusReport():
     def __init__(self) -> None:
         self.active_levels = set()
@@ -31,7 +42,6 @@ class LevelStatusReport():
         # shared attributes
         self.level = None
         self.oredrive = None
-        self.ring = None
 
     def fetch_ls_report(self):
         try:
@@ -41,47 +51,65 @@ class LevelStatusReport():
 
         except m.JsonReport.DoesNotExist:
             # Return an empty JSON object if the report does not exist
-            print("No level status report.. generating")
-            report = self.create_ls_report()
-            return report
+            return {'msg': {'body': 'Report not generated yet', 'type': 'warning'}}
 
         except DatabaseError as e:
             # Handle database errors
             print(f"Database error occurred: {str(e)}")
-            return {"msg": "Database error"}
+            return {"msg": {'body': "Database error", 'type': 'error'}}
 
         except Exception as e:
             # Catch all other exceptions
             print(f"An error occurred: {str(e)}")
-            return {"msg": "An error occurred"}
+            return {"msg": {'body': "An error occurred", 'type': 'error'}}
 
-    def create_ls_report(self, for_date="20241005P1"):
+    def create_ls_report(self, request):
+        right_now = Shkey.today_shkey()
+
+        def get_current_shift():
+            hour = datetime.now().hour
+            return "Nightshift" if hour >= 12 else "Dayshift"
+
         try:
-            report = self.list_active_rings()
+            ls_report = self.list_active_rings()
+            report_date_str = datetime.now().strftime('%d/%m/%Y %I:%M %p')
+            shift = get_current_shift()
+
+            report = {
+                'author': {
+                    "full_name": request.user.get_full_name() if request.user else "Anonymous User",
+                    "avatar": request.user.avatar if request.user.avatar else "default.svg",
+                    "bg_colour": request.user.bg_colour if request.user.bg_colour else "#f5f5f5"
+                } if request.user else None,
+                'report_date': report_date_str,
+                'shift': shift,
+                'report': ls_report
+            }
+            self.delete_ls_report()
 
             m.JsonReport.objects.create(
                 name="Prod Level Status Report",
                 report=report,
-                for_date=for_date,
+                for_date=right_now,
             )
-            print("Report successfully saved.")
+            return {'msg': {'body': "Report created successfully", 'type': 'success'}}
+
         except IntegrityError as e:
-            # Handle integrity issues, such as violating unique constraints
             print(f"Integrity error occurred: {str(e)}")
+            return {'msg': {'body': 'Integrity error occurred', 'type': 'error'}}
         except DatabaseError as e:
-            # Handle general database errors
             print(f"Database error occurred: {str(e)}")
+            return {'msg': {'body': 'Database error occurred', 'type': 'error'}}
         except Exception as e:
-            # Catch any other exceptions
             print(f"An error occurred: {str(e)}")
+            return {'msg': {'body': 'An error occurred', 'type': 'error'}}
 
     def delete_ls_report(self):
-        # this only happens when updating report
-        pass
+        m.JsonReport.objects.filter(name="Prod Level Status Report").delete()
 
     def list_active_rings(self):
         # Step 1: Query the data
-        current_rings = ProductionRing.objects.filter(status='Bogging').values(
+        current_rings = pm.ProductionRing.objects.filter(is_active=True, status='Bogging').values(
             'level', 'oredrive').distinct().order_by('level', 'oredrive')
 
         # Step 2: Structure the data by levels
@@ -111,62 +139,77 @@ class LevelStatusReport():
         return report_json
 
     def oredrive_status(self, level, oredrive):
-
         drive = {}
-        drilled = []
-        charged = []
-        bogging = {'overdraw_tonnes': 0, 'bogged_tonnes': 0,
-                   'overdraw_zone': '', 'comment': '', 'in_flow': None}
+
+        od_rings = pm.ProductionRing.objects.filter(
+            is_active=True, level=level, oredrive=oredrive).order_by('status')
+
+        for status, group in groupby(od_rings, key=attrgetter('status')):
+            rings = list(group)
+
+            if status == 'Designed':
+                drive['designed'] = self.handle_designed(rings)
+            elif status == 'Drilled':
+                drive['drilled'] = self.handle_drilled(rings)
+            elif status == 'Charged':
+                drive['charged'] = self.handle_charged(rings)
+            elif status == 'Bogging':
+                drive['bogging'] = self.handle_bogging(rings)
+            elif status == 'Complete':
+                # I dont care about this right now, maybe later
+                pass
+            else:
+                # other, maybe later as well
+                print(status)
+
+        drive['name'] = oredrive
+
+        return drive
+
+    def handle_designed(self, rings):
         designed = {'rings': 0, 'mtrs': 0}
+        for ring in rings:
+            designed['rings'] += 1
+            if ring.drill_meters:
+                designed['mtrs'] += ring.drill_meters
+        return designed
+
+    def handle_drilled(self, rings):
+        drilled = {'last_drilled': None, 'problem_rings': []}
+        sorted_rings = sorted(
+            rings, key=lambda r: r.drill_complete_shift or "")
+        for ring in sorted_rings:
+            drilled['last_drilled'] = ring.ring_number_txt
+            prob = pm.RingStateChange.objects.filter(
+                is_active=True, prod_ring=ring, state__pri_state='Drilled', state__sec_state='Blocked Holes')
+            for p in prob:
+                drilled['problem_rings'].append(
+                    {'ring_number_txt': ring.ring_number_txt, 'condition': 'Blocked Holes'})
+
+        return drilled
+
+    def handle_charged(self, rings):
+        charged = []
+        for ring in rings:
+            osr_state = self.is_overslept_ring(ring)
+            charged.append({'ring': ring.ring_number_txt, 'detonator': ring.detonator_actual,
+                           'fireby_date': ring.fireby_date, 'is_overslept': osr_state})
+
+        return charged
+
+    def handle_bogging(self, rings):
         designed_tonnes = 0
         primary_ring = None
-        latest_drilled_ring = None
 
-        od_rings = ProductionRing.objects.filter(
-            level=level, oredrive=oredrive)
+        for ring in rings:
+            designed_tonnes += ring.designed_tonnes
 
-        for self.ring in od_rings:
-            if self.ring.status == 'Designed':
-                designed['rings'] += 1
-                designed['mtrs'] += self.ring.drill_meters
-
-            elif self.ring.status == 'Drilled':
-
-                #TODO: Fix this ===============================
-                '''
-                if self.ring.has_blocked_holes:
-                    drilled.append(
-                        {"ring": self.ring.ring_number_txt, "is_blocked": self.ring.has_blocked_holes})'''
-
-                if latest_drilled_ring is None or self.ring.drill_complete_shift > latest_drilled_ring.drill_complete_shift:
-                    latest_drilled_ring = self.ring
-
-            elif self.ring.status == 'Charged':
-                osr_state = self.is_overslept_ring()
-                charged.append({'ring': self.ring.ring_number_txt,
-                               'detonator': self.ring.detonator_actual, 'fireby_date': self.ring.fireby_date, 'is_overslept': osr_state})
-
-            elif self.ring.status == 'Bogging':
-                designed_tonnes += self.ring.designed_tonnes
-                if self.ring.multi_fire_group != '(M)':
-                    primary_ring = self.ring
-
-        '''
-        if latest_drilled_ring:
-            # Ensure it's not already in the list
-            if latest_drilled_ring.ring_number_txt not in [ring["ring"] for ring in drilled]:
-                drilled.append({"ring": latest_drilled_ring.ring_number_txt,
-                               "is_blocked": latest_drilled_ring.has_blocked_holes})'''
+            if ring.multi_fire_group != '(M)':
+                primary_ring = ring
 
         bogging = self.calculate_bogging_ring(primary_ring, designed_tonnes)
 
-        drive['name'] = oredrive
-        drive['designed'] = designed
-        drive['drilled'] = drilled
-        drive['charged'] = charged
-        drive['bogging'] = bogging
-
-        return drive
+        return bogging
 
     def calculate_bogging_ring(self, primary_ring, designed_tonnes):
         cm = CommonMethods()
@@ -177,7 +220,7 @@ class LevelStatusReport():
             try:
                 bogging['designed_tonnes'] = primary_ring.concept_ring.pgca_modelled_tonnes
             except AttributeError:
-                bogging['comment'] = "ORPHANED FLOW RING"
+                bogging['comment'] = "ORPHANED RING"
         else:
             bogging['designed_tonnes'] = designed_tonnes
 
@@ -191,7 +234,6 @@ class LevelStatusReport():
             bogging['ring_txt'] = primary_ring.ring_number_txt
 
         bogging['bogged_tonnes'] = self.get_bogged_tonnes(primary_ring)
-        print("bogged", bogging['bogged_tonnes'])  # ===============
         bogging['overdraw_zone'] = primary_ring.in_overdraw_zone
         bogging['overdraw_tonnes'] = cm.no_null(primary_ring.overdraw_amount)
         bogging['in_flow'] = primary_ring.in_flow
@@ -199,6 +241,7 @@ class LevelStatusReport():
             'comment', '') or '') + ' ' + str(primary_ring.comment or '')).strip()
         bogging['draw_ratio'] = primary_ring.draw_percentage
         bogging['draw_deviation'] = cm.no_null(primary_ring.draw_deviation)
+        bogging['conditions'] = self.get_ring_conditions(primary_ring)
 
         overdraw_tonnes = bogging['overdraw_tonnes']
         bogged_tonnes = bogging['bogged_tonnes']
@@ -218,18 +261,28 @@ class LevelStatusReport():
         return bogging
 
     def get_bogged_tonnes(self, ring):
-        result = BoggedTonnes.objects.filter(production_ring=ring).aggregate(
+        result = pm.BoggedTonnes.objects.filter(production_ring=ring).aggregate(
             total_bogged_tonnes=Sum('bogged_tonnes'))
 
         # result will be a dictionary with 'total_bogged_tonnes' key, return the value or 0 if None
         return result['total_bogged_tonnes'] or 0
 
-    def is_overslept_ring(self):
-        # charge_date is a string in the format yyyy-mm-dd
-        if not self.ring.charge_shift:
+    def is_overslept_ring(self, ring):
+        # charge_shift is a shkey
+        if not ring.charge_shift:
             return False
 
-        charge_date = date.fromisoformat(self.ring.charge_shift)
+        charge_date = date.fromisoformat(ring.charge_shift)
         overslept_date = charge_date + timedelta(days=28)
 
         return date.today() > overslept_date
+
+    def get_ring_conditions(self, ring):
+        cond_list = []
+        active_cond = pm.RingStateChange.objects.filter(
+            is_active=True, prod_ring=ring)
+        for c in active_cond:
+            condition = c.state.sec_state
+            cond_list.append(condition)
+
+        return cond_list

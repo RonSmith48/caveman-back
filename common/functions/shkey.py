@@ -118,4 +118,5 @@ class Shkey(object):
 
     @staticmethod
     def today_shkey():
-        return Shkey.generate_shkey(date.today())
+        shift = 'D' if datetime.now().hour < 12 else 'N'
+        return Shkey.generate_shkey(date.today(), shift)
