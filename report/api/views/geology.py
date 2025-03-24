@@ -16,22 +16,16 @@ from django.db.models.functions import Power, Sqrt
 from datetime import datetime, timedelta
 
 
-class FiredRingsView(APIView):
-    def get(self, request, *args, **kwargs):
-        gtg = GeoTonnesGrade()
-        rings = gtg.get_fired_rings()
-
-        return Response(rings, status=status.HTTP_200_OK)
-
+class FiredRingGradeView(APIView):
     def post(self, request, *args, **kwargs):
-        gtg = GeoTonnesGrade()
+        gr = GeoReporting()
         date = request.data.get('date')
-        rings = gtg.get_fired_rings(date)
+        rings = gr.get_fired_rings(date)
 
         return Response(rings, status=status.HTTP_200_OK)
 
 
-class GeoTonnesGrade():
+class GeoReporting():
     def __init__(self):
         pass
 
