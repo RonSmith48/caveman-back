@@ -31,7 +31,6 @@ class UploadDupeView(generics.CreateAPIView):
         try:
             dfh = DupeFileHandler()
             handler_response = dfh.handle_dupe_file(request, file, date)
-            # response format {'msg_type':'error/success','msg':'message'}
 
             return Response(handler_response, status=status.HTTP_200_OK)
 
@@ -64,14 +63,14 @@ class DupeFileHandler():
 
         # All this is feedback msg to the user
         if self.error:
-            handler_response = {'type': 'error', 'body': self.error}
+            handler_response = {'msg': {'type': 'error', 'body': self.error}}
         else:
             msg = ''
             if self.rings_created > 0:
                 msg = f'{self.rings_created} rings created, '
             if self.rings_updated > 0:
                 msg = msg + f'{self.rings_updated} rings updated'
-            handler_response = {'type': 'success', 'body': msg}
+            handler_response = {'msg': {'type': 'success', 'body': msg}}
         return handler_response
 
     def read_dupe(self, f):
