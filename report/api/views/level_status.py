@@ -281,8 +281,10 @@ class LevelStatusReport():
         cond_list = []
         active_cond = pm.RingStateChange.objects.filter(
             is_active=True, prod_ring=ring)
+
         for c in active_cond:
             condition = c.state.sec_state
-            cond_list.append(condition)
+            if condition:  # skips None, '', 0, and other falsy values
+                cond_list.append(condition)
 
         return cond_list

@@ -19,6 +19,15 @@ class DCFReportView(APIView):
         return Response(rings, status=status.HTTP_200_OK)
 
 
+class BogVerifyReportView(APIView):
+    def post(self, request, *args, **kwargs):
+        pr = ProdReporting()
+        data = request.data
+        tonnes = pr.get_bog_tonnes_shift(data)
+
+        return Response(tonnes, status=status.HTTP_200_OK)
+
+
 class ProdReporting():
     def __init__(self):
         pass
@@ -70,3 +79,21 @@ class ProdReporting():
             0 if x["shift"] == "Day" else 1, x["activity"], x["alias"]))
 
         return result
+
+    def get_bog_tonnes_shift(self, data):
+        date = data.get('date')
+        shift = data.get('shift')
+        shkey = Shkey.generate_shkey(date, shift)
+
+        bogged_entries = pm.BoggedTonnes.objects.select_related(
+            'production_ring').filter(shkey=shkey)
+
+        results = [
+            {
+                'alias': entry.production_ring.alias,
+                'quantity': float(entry.bogged_tonnes)
+            }
+            for entry in bogged_entries
+        ]
+
+        return results
