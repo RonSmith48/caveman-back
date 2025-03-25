@@ -88,12 +88,13 @@ class ProdReporting():
         bogged_entries = pm.BoggedTonnes.objects.select_related(
             'production_ring').filter(shkey=shkey)
 
-        results = [
+        results = sorted([
             {
                 'alias': entry.production_ring.alias,
-                'quantity': float(entry.bogged_tonnes)
+                'quantity': float(entry.bogged_tonnes),
+                'shift': shift
             }
             for entry in bogged_entries
-        ]
+        ], key=lambda x: x['alias'])
 
         return results
