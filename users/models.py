@@ -43,6 +43,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=False)
     start_date = models.DateTimeField(default=timezone.now)
     role = models.CharField(max_length=30, null=True, blank=True)
+    permissions = models.JSONField(null=True, blank=True)
     otp = models.CharField(max_length=6, null=True, blank=True)
     avatar = models.CharField(max_length=200, blank=True, null=True)
     bg_colour = models.CharField(max_length=7, null=True, blank=True)
