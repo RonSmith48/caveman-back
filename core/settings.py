@@ -13,9 +13,13 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import os
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+env = os.environ.get('ENV', 'development')
+dotenv_path = BASE_DIR / f'.env.{env}'
+load_dotenv(dotenv_path)
 
 
 # Quick-start development settings - unsuitable for production
@@ -120,23 +124,35 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+
 # DATABASES = {
 #     'default': {
-#         'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.postgresql'),
-#         'NAME': os.environ.get('DB_NAME', 'caveman2'),
-#         'USER': os.environ.get('DB_USER', 'postgres'),
-#         'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
-#         'HOST': os.environ.get('DB_HOST', '10.0.0.2'),
-#         'PORT': int(os.environ.get('DB_PORT', '5432')) if os.environ.get('DB_PORT') else None,
+#         'ENGINE': os.environ.get('DB_ENGINE', 'mssql'),
+#         'NAME': os.environ.get('DB_NAME'),
+#         'USER': os.environ.get('DB_USER'),
+#         'PASSWORD': os.environ.get('DB_PASSWORD'),
+#         'HOST': os.environ.get('DB_HOST'),
+#         'PORT': os.environ.get('DB_PORT', ''),
+#         'OPTIONS': {
+#             'driver': os.environ.get('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+#         },
 #     }
 # }
-
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': 'default.db',
+        'ENGINE': 'mssql',
+        'NAME': 'MTS_UG_REPORTING_DEV',
+        'USER': 'MTSREPORTS',
+        'PASSWORD': 'FCxPzV1j4PGrWgg',
+        'HOST': 'EHO-DB01',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'ODBC Driver 18 for SQL Server',
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
+        },
     }
 }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
