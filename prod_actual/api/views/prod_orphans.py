@@ -9,7 +9,7 @@ from prod_actual.api.serializers import ProdRingSerializer
 from settings.models import ProjectSetting
 from report.models import JsonReport
 
-from django.db.models import F, ExpressionWrapper, fields
+from django.db.models import F, ExpressionWrapper, fields, Value
 from django.db.models.functions import Power, Sqrt
 
 from datetime import datetime, timedelta
@@ -57,11 +57,10 @@ class ProdOrphans():
             candidates = candidates.annotate(
                 distance=ExpressionWrapper(
                     Sqrt(
-                        Power(F('x') - orphan.x, 2) +
-                        Power(F('y') - orphan.y, 2)
+                        (F('x') - Value(orphan.x)) * (F('x') - Value(orphan.x)) +
+                        (F('y') - Value(orphan.y)) * (F('y') - Value(orphan.y))
                     ),
-                    output_field=fields.DecimalField(
-                        max_digits=12, decimal_places=6)
+                    output_field=fields.DecimalField(max_digits=12, decimal_places=6)
                 )
             )
 
@@ -89,13 +88,17 @@ class ProdOrphans():
     def fetch_threshold_dist(self):
         try:
             project_setting = ProjectSetting.objects.get(key='ip_general')
-            # Assuming 'value' is the JSONField where 'distValue' is stored
-            dist_value = project_setting.value.get('distValue')
-            self.threshold_dist = round(
-                float(dist_value), 1) if dist_value else 2
-        except ProjectSetting.DoesNotExist:
+            dist_value = project_setting.value.get('distValue', None)
+
+            if dist_value is not None:
+                self.threshold_dist = round(float(dist_value), 1)
+            else:
+                self.threshold_dist = 2
+                self.warning_msg = "distValue not found in project setting; using default 2m"
+        except (ProjectSetting.DoesNotExist, ValueError, TypeError) as e:
             self.threshold_dist = 2
-            self.warning_msg = "Threshold not set, using default 2m"
+            self.warning_msg = f"Could not fetch threshold; using default 2m. Error: {e}"
+
 
     def store_orphan_count(self):
         # Fetch orphans without a concept_ring
