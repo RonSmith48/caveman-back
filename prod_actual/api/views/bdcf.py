@@ -163,6 +163,12 @@ class FiredRings(APIView):
         fired_detail = bdcf.get_fired_ring_detail(fired_rings)
 
         return Response({'charged_rings': charged_rings, 'fired_rings': fired_detail, 'msg': bdcf.msg}, status=status.HTTP_200_OK)
+    
+class UnFireRingView(APIView):
+    def get(self, request, location_id, *args, **kwargs):
+        bdcf = BDCFRings()
+        reply = bdcf.unfire_ring(request, location_id)
+        return Response(reply, status=status.HTTP_200_OK)
 
 
 class GroupFromStatusView(APIView):
@@ -1274,9 +1280,7 @@ class BDCFRings():
         except Exception as e:
             return {'msg': {'body': f'Unexpected error: {str(e)}', 'type': 'error'}}
 
-    def unfire_ring(self, request):
-        data = request.data
-        location_id = data['location_id']
+    def unfire_ring(self, request, location_id):
 
         try:
             with transaction.atomic():
@@ -1309,6 +1313,8 @@ class BDCFRings():
                 fired_ring.status = 'Charged'  # Default status before being fired
                 fired_ring.fired_shift = None
                 fired_ring.save()
+
+                msg = self.do_status_rollback(request, location_id)
 
             return {'msg': {'body': 'Reversal complete, ring unfired successfully', 'type': 'success'}}
 
@@ -1366,6 +1372,9 @@ class BDCFRings():
     def drill_ring(self, request):
         data = request.data
         location_id = data.get('location_id')
+        drilled_date = data.get('date')
+        shift = data.get('shift')
+        shkey = Shkey.generate_shkey(drilled_date, shift)
         if not location_id:
             return {'msg': {'type': 'error', 'body': 'location_id is required'}}
 
@@ -1376,8 +1385,7 @@ class BDCFRings():
             ring.drilled_meters = None if drilled_meters == "" else drilled_meters
 
             if not data.get('half_drilled'):
-                ring.drill_complete_shift = data.get(
-                    'date', ring.drill_complete_shift)
+                ring.drill_complete_shift = shkey
                 ring.status = data.get('status', ring.status)
 
             # Save the updated model instance
