@@ -45,8 +45,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=30, null=True, blank=True)
     permissions = models.JSONField(null=True, blank=True)
     otp = models.CharField(max_length=6, null=True, blank=True)
-    avatar = models.CharField(max_length=200, blank=True, null=True)
-    bg_colour = models.CharField(max_length=7, null=True, blank=True)
+    avatar = models.JSONField(null=True, blank=True)
     username = None
 
     objects = CustomUserManager()
@@ -59,3 +58,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+
+class AvatarRegistry(models.Model):
+    filename = models.CharField(max_length=200, unique=True)
+    assigned_to = models.OneToOneField(
+        'users.CustomUser',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='registered_avatar'
+    )
+    flag_for_delete = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.filename

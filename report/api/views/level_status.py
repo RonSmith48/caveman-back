@@ -78,9 +78,10 @@ class LevelStatusReport():
             report = {
                 'author': {
                     "full_name": request.user.get_full_name() if request.user else "Anonymous User",
-                    "avatar": request.user.avatar if request.user.avatar else "default.svg",
-                    "bg_colour": request.user.bg_colour if request.user.bg_colour else "#f5f5f5"
+                    "avatar": request.user.avatar,
+                    "initials": request.user.initials if request.user else None,
                 } if request.user else None,
+
                 'report_date': report_date_str,
                 'shift': shift,
                 'report': ls_report

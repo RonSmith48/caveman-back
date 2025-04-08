@@ -125,33 +125,33 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3' if os.getenv('DB_ENGINE') == 'sqlite' else 'mssql',
+        'NAME': os.getenv('DB_NAME') if os.getenv('DB_ENGINE') == 'sqlite' else os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER', ''),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', ''),
+        'PORT': os.getenv('DB_PORT', ''),
+        'OPTIONS': {
+            'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+        } if os.getenv('DB_ENGINE') == 'mssql' else {},
+    }
+}
 # DATABASES = {
 #     'default': {
-#         'ENGINE': os.environ.get('DB_ENGINE', 'mssql'),
-#         'NAME': os.environ.get('DB_NAME'),
-#         'USER': os.environ.get('DB_USER'),
-#         'PASSWORD': os.environ.get('DB_PASSWORD'),
-#         'HOST': os.environ.get('DB_HOST'),
-#         'PORT': os.environ.get('DB_PORT', ''),
+#         'ENGINE': 'mssql',
+#         'NAME': 'MTS_UG_REPORTING_DEV',
+#         'USER': 'MTSREPORTS',
+#         'PASSWORD': 'FCxPzV1j4PGrWgg',
+#         'HOST': 'EHO-DB01',
+#         'PORT': '1433',
 #         'OPTIONS': {
-#             'driver': os.environ.get('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+#             'driver': 'ODBC Driver 18 for SQL Server',
+#             'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
 #         },
 #     }
 # }
-DATABASES = {
-    'default': {
-        'ENGINE': 'mssql',
-        'NAME': 'MTS_UG_REPORTING_DEV',
-        'USER': 'MTSREPORTS',
-        'PASSWORD': 'FCxPzV1j4PGrWgg',
-        'HOST': 'EHO-DB01',
-        'PORT': '1433',
-        'OPTIONS': {
-            'driver': 'ODBC Driver 18 for SQL Server',
-            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
-        },
-    }
-}
 
 
 # Password validation
