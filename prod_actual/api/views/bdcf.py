@@ -818,8 +818,8 @@ class BDCFRings():
         valid_weighted_rings = 0  # Count rings with valid tonnes/volume for averaging
 
         for ring in ring_list:
-            tonnes = ring['designed_tonnes']
-            volume = ring['volume']
+            tonnes = ring['designed_tonnes'] or 0
+            volume = ring['volume'] or 0
 
             if tonnes > 0 and volume > 0:
                 # missing volumes have been added in get_ring_measures method
@@ -1011,7 +1011,7 @@ class BDCFRings():
                 alias=alias,
                 prod_dev_code='P',
                 is_active=True,
-                comment='custom ring',
+                comment='',
                 level=level,
                 status=common['status'],
                 x=concept_ring.x,
