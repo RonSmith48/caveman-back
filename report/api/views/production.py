@@ -97,4 +97,9 @@ class ProdReporting():
             for entry in bogged_entries
         ], key=lambda x: x['alias'])
 
-        return results
+        total = sum(item['quantity'] for item in results)
+
+        return {
+            'results': results,
+            'total': total
+        }
