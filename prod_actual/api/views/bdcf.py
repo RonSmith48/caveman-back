@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from common.functions.common_methods import CommonMethods
 from common.functions.shkey import Shkey
 from prod_actual.api.views.ring_state import ConditionsAndStates
-from prod_actual.api.views.prod_orphans import ProdOrphans
+from prod_actual.api.views.drill_blast import ProdOrphans
 from common.functions.status import Status
 
 from datetime import timedelta, date

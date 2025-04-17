@@ -4,7 +4,7 @@ from rest_framework import status
 
 from report.models import JsonReport
 
-from prod_actual.api.views.prod_orphans import ProdOrphans
+from prod_actual.api.views.drill_blast import ProdOrphans
 
 
 class OrphanedProdRingsCountView(APIView):
