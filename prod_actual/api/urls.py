@@ -2,9 +2,9 @@ from django.urls import path
 from prod_actual.api.views.crud import ProdRingListCreateView, ProdRingRetrieveUpdateDestroyView, ProdRingStatusListView
 from prod_actual.api.views.ring_inspector import LevelListView, OredriveListView, RingNumberListView, RingView
 from prod_actual.api.views.upload_dupe import UploadDupeView
-from prod_actual.api.views.drill_blast import OrphanListView, MatchProdConceptRingsView
 from prod_actual.api.views.location_history import LocationHistoryView
 from prod_actual.api.views.ring_state import RingStateListView, RingStateDeleteView
+import prod_actual.api.views.drill_blast as db
 import prod_actual.api.views.bdcf as bdcf
 
 urlpatterns = [
@@ -40,11 +40,15 @@ urlpatterns = [
          bdcf.UnFireRingView.as_view(), name='unfire-ring'),
     path('bdcf/<int:location_id>/',
          bdcf.LocationDetailView.as_view(), name='location-detail'),
+    path('drill-blast/designed-rings/',
+         db.DesignedRingsView.as_view(), name='drill-blast-designed'),
+    path('drill-blast/design-upload/',
+         db.RingDesignUploadView.as_view(), name='ring-design-upload'),
     path('history/<int:location_id>/',
          LocationHistoryView.as_view(), name='location-history'),
-    path('orphaned-rings/', OrphanListView.as_view(), name='prod-orphans'),
+    path('orphaned-rings/', db.OrphanListView.as_view(), name='prod-orphans'),
     path('orphaned-rings/process/',
-         MatchProdConceptRingsView.as_view(), name='process-orphans'),
+         db.MatchProdConceptRingsView.as_view(), name='process-orphans'),
     path('prod-rings/', ProdRingListCreateView.as_view(),
          name='prod-ring-list-create'),
     path('prod-rings/<int:pk>/',

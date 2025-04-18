@@ -43,3 +43,21 @@ class RingStateSerializer(serializers.ModelSerializer):
 
     def get_is_mandatory(self, obj):
         return {"pri_state": obj.pri_state, "sec_state": obj.sec_state} in MANDATORY_RING_STATES
+
+
+class ProductionRingReportSerializer(serializers.ModelSerializer):
+    cu_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=3, source='concept_ring.modelled_cu', read_only=True)
+    au_gram_per_tonne = serializers.DecimalField(
+        max_digits=5, decimal_places=3, source='concept_ring.modelled_au', read_only=True)
+    density = serializers.DecimalField(
+        max_digits=4, decimal_places=3, source='concept_ring.density', read_only=True)
+
+    class Meta:
+        model = m.ProductionRing
+        fields = [
+            'location_id', 'level', 'oredrive', 'ring_number_txt', 'holes', 'drill_meters',
+            'azimuth', 'dump', 'burden', 'diameters',
+            'cu_pct', 'au_gram_per_tonne', 'density',
+            'blastsolids_volume', 'designed_tonnes', 'draw_percentage', 'x', 'y', 'z'
+        ]
