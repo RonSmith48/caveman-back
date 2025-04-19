@@ -31,7 +31,6 @@ class OrphanListView(generics.ListAPIView):
 
     def get_queryset(self):
         return m.ProductionRing.objects.filter(concept_ring__isnull=True)
-        # return ProductionRing.objects.all()
 
 
 class MatchProdConceptRingsView(APIView):
@@ -43,7 +42,7 @@ class MatchProdConceptRingsView(APIView):
             return Response({data["msg"]}, status=data["status_code"])
         msg_body = f'{data["processed_count"]} rings processed, {
             data["matched"]} matched'
-        return Response({"msg": {"body": msg_body, "type": "success"}, "orphan count": data["orphan count"]}, status=status.HTTP_200_OK)
+        return Response({"msg": {"body": msg_body, "type": "success"}}, status=status.HTTP_200_OK)
 
 
 class DesignedRingsView(APIView):
@@ -252,11 +251,9 @@ class ProdOrphans():
                     closest_ring.alias = design_alias
                     closest_ring.save()
 
-        updated_orphans = self.store_orphan_count()
-
         if self.error_msg:
             return {"msg": {"type": "error", "body": self.error_msg}, "status_code": 500}
-        return {"processed_count": orphans.count(), "matched": matches, "orphan count": updated_orphans["orphan count"]}
+        return {"processed_count": orphans.count(), "matched": matches}
 
     def fetch_threshold_dist(self):
         try:
@@ -271,24 +268,6 @@ class ProdOrphans():
         except (ProjectSetting.DoesNotExist, ValueError, TypeError) as e:
             self.threshold_dist = 2
             self.warning_msg = f"Could not fetch threshold; using default 2m. Error: {e}"
-
-    def store_orphan_count(self):
-        # Fetch orphans without a concept_ring
-        orphans = m.ProductionRing.objects.filter(
-            is_active=True, concept_ring__isnull=True)
-        orphan_count = orphans.count()
-
-        report_name = 'orphaned prod rings count'
-
-        # Delete the existing report with the same name
-        JsonReport.objects.filter(name=report_name).delete()
-
-        # Create a new JsonReport entry
-        JsonReport.objects.create(
-            name=report_name,
-            report={'orphan count': orphan_count}
-        )
-        return {'orphan count': orphan_count}
 
     def is_orphan(self, location_id):
         """
