@@ -130,7 +130,7 @@ class RingDesignService:
                 obj, created = m.ProductionRing.objects.update_or_create(
                     alias=alias,
                     defaults={
-                        'prod_dev_code': 'P',
+                        'prod_dev_code': 'p',
                         'is_active': True,
                         'level': level,
                         'status': 'Designed',

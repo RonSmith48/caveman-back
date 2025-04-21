@@ -141,10 +141,11 @@ class RingComments(models.Model):
     datetime = models.DateTimeField(auto_now_add=True)
     comment = models.TextField()
     # eg. driller, loader, chargeup
-    show_to_operator = models.CharField(max_length=50, blank=True, null=True)
+    show_to_operator = models.JSONField(blank=True, null=True)
 
 
 class RingState(models.Model):
+    # if this ever gets a redesign, change attributes to 'state' and 'condition'
     pri_state = models.CharField(max_length=30)
     sec_state = models.CharField(max_length=30, blank=True, null=True)
 
@@ -168,7 +169,7 @@ class RingStateChange(models.Model):
     shkey = models.CharField(max_length=20, blank=True, null=True)
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name='change_activation', blank=True, null=True)
-    # This is a secondary state, a tag
+    # This is a combination of state and condition
     state = models.ForeignKey(RingState, on_delete=models.CASCADE)
     comment = models.TextField(blank=True, null=True)
     operation_complete = models.BooleanField(default=True)
@@ -187,3 +188,43 @@ class RingLink(models.Model):
         ('P', 'Predecessor'),
         ('S', 'Successor')
     ], null=True, blank=True)
+
+
+class DrawChange(models.Model):
+    TYPE_CHOICES = [
+        ('overdraw', 'Overdraw'),
+        ('deviation', 'Deviation'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('conditional', 'Conditional'),
+        ('rejected', 'Rejected'),
+    ]
+
+    ring = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
+    quantity = models.SmallIntegerField()
+    is_active = models.BooleanField(default=True)
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, blank=True, null=True)
+    reason = models.TextField(blank=True, null=True)
+    type = models.CharField(
+        max_length=15, choices=TYPE_CHOICES, null=True, blank=True)
+    approvers = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(
+        max_length=15, choices=STATUS_CHOICES, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.ring} - {self.type} - {self.quantity}t"
+
+    def is_conditionally_approved(self):
+        if self.status == 'conditional':
+            return True
+        if not self.approvers or 'approvals' not in self.approvers:
+            return False
+        return any(
+            a.get('response') == 'approved' and a.get('conditions')
+            for a in self.approvers.get('approvals', [])
+        )

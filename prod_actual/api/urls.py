@@ -4,6 +4,7 @@ from prod_actual.api.views.ring_inspector import LevelListView, OredriveListView
 from prod_actual.api.views.upload_dupe import UploadDupeView
 from prod_actual.api.views.location_history import LocationHistoryView
 from prod_actual.api.views.ring_state import RingStateListView, RingStateDeleteView
+from prod_actual.api.views.geology import OverdrawRingView
 import prod_actual.api.views.drill_blast as db
 import prod_actual.api.views.bdcf as bdcf
 
@@ -44,6 +45,7 @@ urlpatterns = [
          db.DesignedRingsView.as_view(), name='drill-blast-designed'),
     path('drill-blast/design-upload/',
          db.RingDesignUploadView.as_view(), name='ring-design-upload'),
+    path('geology/overdraw/', OverdrawRingView.as_view(), name='geology-overdraw'),
     path('history/<int:location_id>/',
          LocationHistoryView.as_view(), name='location-history'),
     path('orphaned-rings/', db.OrphanListView.as_view(), name='prod-orphans'),
