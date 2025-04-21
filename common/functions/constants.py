@@ -1,6 +1,7 @@
 MANDATORY_RING_STATES = [
     {"pri_state": "Abandoned", "sec_state": None},
     {"pri_state": "Bogging", "sec_state": None},
+    {"pri_state": "Bogging", "sec_state": "Waste"},
     {"pri_state": "Charged", "sec_state": None},
     {"pri_state": "Charged", "sec_state": "Incomplete"},
     {"pri_state": "Charged", "sec_state": "Charged Short"},
