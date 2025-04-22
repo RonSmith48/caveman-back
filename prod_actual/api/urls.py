@@ -1,6 +1,6 @@
 from django.urls import path
 from prod_actual.api.views.crud import ProdRingListCreateView, ProdRingRetrieveUpdateDestroyView, ProdRingStatusListView
-from prod_actual.api.views.ring_inspector import LevelListView, OredriveListView, RingNumberListView, RingView
+from prod_actual.api.views.ring_editor import LevelListView, OredriveListView, RingNumberListView
 from prod_actual.api.views.upload_dupe import UploadDupeView
 from prod_actual.api.views.location_history import LocationHistoryView
 from prod_actual.api.views.ring_state import RingStateListView, RingStateDeleteView
@@ -57,13 +57,10 @@ urlpatterns = [
          ProdRingRetrieveUpdateDestroyView.as_view(), name='prod-ring-detail'),
     path('prod-rings/status/<str:status>/',
          ProdRingStatusListView.as_view(), name='prod-ring-status-list'),
-    path('ring-inspector/levels/', LevelListView.as_view(), name='level-list'),
-    path('ring-inspector/<int:level>/',
-         OredriveListView.as_view(), name='oredrive-list'),
-    path('ring-inspector/<int:level>/<str:oredrive>/',
-         RingNumberListView.as_view(), name='ring-number-list'),
-    path('ring-inspector/<int:level>/<str:oredrive>/<str:ring_number_txt>/',
-         RingView.as_view(), name='ring-view'),
+    path('ring-editor/levels/', LevelListView.as_view(), name='level-list'),
+    path('ring-editor/oredrives/', OredriveListView.as_view(), name='oredrive-list'),
+    path('ring-editor/rings/', RingNumberListView.as_view(),
+         name='ring-number-list'),
     path('ring-states/', RingStateListView.as_view(), name='ring-state-list'),
     path('ring-states/delete/', RingStateDeleteView.as_view(),
          name='ring-state-delete'),
