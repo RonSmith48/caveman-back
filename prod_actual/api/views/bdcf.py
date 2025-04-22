@@ -1309,16 +1309,14 @@ class BDCFRings():
 
                 # Change status of replaced rings back to "Bogging"
                 if replacing:
-                    m.ProductionRing.objects.filter(
-                        location_id__in=replacing).update(status='Bogging', bog_complete_shift=None)
+                    m.ProductionRing.objects.filter(is_active=True,
+                                                    location_id__in=replacing).update(status='Bogging', bog_complete_shift=None)
 
                 # Deactivate the primary fired ring
                 fired_ring = ring_state_change.prod_ring
                 fired_ring.status = 'Charged'  # Default status before being fired
                 fired_ring.fired_shift = None
                 fired_ring.save()
-
-                msg = self.do_status_rollback(request, location_id)
 
             return {'msg': {'body': 'Reversal complete, ring unfired successfully', 'type': 'success'}}
 
