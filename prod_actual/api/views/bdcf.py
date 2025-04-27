@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from common.functions.common_methods import CommonMethods
 from common.functions.shkey import Shkey
 from prod_actual.api.views.ring_state import ConditionsAndStates
-from prod_actual.api.views.prod_orphans import ProdOrphans
+from prod_actual.api.views.drill_blast import ProdOrphans
 from common.functions.status import Status
 
 from datetime import timedelta, date
@@ -163,7 +163,8 @@ class FiredRings(APIView):
         fired_detail = bdcf.get_fired_ring_detail(fired_rings)
 
         return Response({'charged_rings': charged_rings, 'fired_rings': fired_detail, 'msg': bdcf.msg}, status=status.HTTP_200_OK)
-    
+
+
 class UnFireRingView(APIView):
     def get(self, request, location_id, *args, **kwargs):
         bdcf = BDCFRings()
@@ -301,8 +302,8 @@ class BDCFRings():
                 "timestamp": entry.datetime_stamp,
                 "contributor": {
                     "full_name": entry.entered_by.get_full_name() if entry.entered_by else "Anonymous User",
-                    "avatar": entry.entered_by.avatar if entry.entered_by.avatar else "default.svg",
-                    "bg_colour": entry.entered_by.bg_colour if entry.entered_by.bg_colour else "#f5f5f5"
+                    "avatar": entry.entered_by.avatar,  # can be None; frontend handles fallback
+                    "initials": entry.entered_by.initials,
                 } if entry.entered_by else None,
             }
             for entry in bogged_entries
@@ -544,6 +545,7 @@ class BDCFRings():
                  'holes_completed': change.holes_completed,  # int
                  'user': {'name': change.user.get_full_name(),
                           'avatar': change.user.avatar,
+                          'initials': change.user.initials,
                           'email': change.user.email}}
             conditions.append(c)
         return conditions
@@ -587,8 +589,9 @@ class BDCFRings():
                 'holes_completed': state.holes_completed,
                 'updated_at': state.updated_at.isoformat(),  # Include timestamp for clarity
                 'user': {
-                    'name': state.user.username if state.user else None,
-                    'avatar': state.user.avatar if state.user and hasattr(state.user, 'avatar') else None
+                    'name': state.user.get_full_name() if state.user else None,
+                    'avatar': state.user.avatar if state.user else None,
+                    'initials': state.user.initials if state.user else None,
                 }
             }
             for state in condition_results
@@ -1146,9 +1149,10 @@ class BDCFRings():
                    'level': g.level,
                    'contributor': {
                        "full_name": g.entered_by.get_full_name() if g.entered_by else "Anonymous User",
-                       "avatar": g.entered_by.avatar if g.entered_by.avatar else "default.svg",
-                       "bg_colour": g.entered_by.bg_colour if g.entered_by.bg_colour else "#f5f5f5"
+                       "avatar": g.entered_by.avatar,
+                       "initials": g.entered_by.initials,
                    } if g.entered_by else None,
+
                    'touched': touched,
                    'pooled_rings': g.pooled_rings,
                    'group_rings': created_rings_info['rings'],
@@ -1305,16 +1309,14 @@ class BDCFRings():
 
                 # Change status of replaced rings back to "Bogging"
                 if replacing:
-                    m.ProductionRing.objects.filter(
-                        location_id__in=replacing).update(status='Bogging', bog_complete_shift=None)
+                    m.ProductionRing.objects.filter(is_active=True,
+                                                    location_id__in=replacing).update(status='Bogging', bog_complete_shift=None)
 
                 # Deactivate the primary fired ring
                 fired_ring = ring_state_change.prod_ring
                 fired_ring.status = 'Charged'  # Default status before being fired
                 fired_ring.fired_shift = None
                 fired_ring.save()
-
-                msg = self.do_status_rollback(request, location_id)
 
             return {'msg': {'body': 'Reversal complete, ring unfired successfully', 'type': 'success'}}
 
@@ -1342,9 +1344,10 @@ class BDCFRings():
                 if rsc and rsc.user:
                     fr_copy['contributor'] = {
                         "full_name": rsc.user.get_full_name() if rsc.user else "Anonymous User",
-                        "avatar": rsc.user.avatar or "default.svg",
-                        "bg_colour": rsc.user.bg_colour or "#f5f5f5"
+                        "avatar": rsc.user.avatar,
+                        "initials": rsc.user.initials if rsc.user else None,
                     }
+
                 else:
                     fr_copy['contributor'] = None
 

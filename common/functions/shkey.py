@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 from django.db import connections
@@ -26,15 +26,12 @@ class Shkey(object):
     @staticmethod
     def format_shkey_day_first(shkey):
         '''
-        Output dd-mm-yyyy [shift]
+        Output dd/mm/yyyy [shift]
         '''
-        if shkey[9] == "2":
-            shft = " NS"
-        else:
-            shft = " DS"
-
-        shift = shkey[6:8] + "-" + shkey[4:6] + "-" + shkey[0:4] + shft
-        return shift
+        if not shkey or len(shkey) != 10:
+            return ''
+        shft = "NS" if shkey[9] == "2" else "DS"
+        return f"{shkey[6:8]}/{shkey[4:6]}/{shkey[0:4]} {shft}"
 
     @staticmethod
     def generate_shkey(date1=None, dn=None):
@@ -67,6 +64,25 @@ class Shkey(object):
         shift = "P2" if dn[0].upper() == "N" else "P1"
         formatted = date2.strftime("%Y%m%d") + shift
         return formatted
+
+    @staticmethod
+    def datetime_to_shkey(dt):
+        if not isinstance(dt, datetime):
+            raise ValueError("Expected a datetime object.")
+
+        day_shift_start = time(6, 0)
+        day_shift_end = time(17, 59)
+
+        if day_shift_start <= dt.time() <= day_shift_end:
+            # Day shift
+            return dt.strftime("%Y%m%d") + "P1"
+        else:
+            # Night shift
+            night_shift_date = dt.date()
+            if dt.time() < day_shift_start:
+                # It's after midnight but still previous day's night shift
+                night_shift_date -= timedelta(days=1)
+            return night_shift_date.strftime("%Y%m%d") + "P2"
 
     @staticmethod
     def shkey_to_shift(shkey):

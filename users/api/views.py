@@ -3,6 +3,7 @@ from django.core.mail import send_mail
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.conf import settings
 from django.db import DatabaseError, IntegrityError
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -26,6 +27,7 @@ import json
 import logging
 
 import users.api.serializers as s
+import users.models as m
 
 
 User = get_user_model()
@@ -84,6 +86,12 @@ class RegisterUserView(APIView):
             serializer = s.RegisterUserSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             user = serializer.save()
+
+            # Ensure initials are set if not provided
+            if not user.initials:
+                user.initials = self.generate_initials(
+                    user.first_name or '', user.last_name or '')
+                user.save()
 
             # Optionally send OTP or handle other post-save actions
             err = self.send_otp_email(request, user.email)
@@ -153,6 +161,9 @@ class RegisterUserView(APIView):
                 'stack_trace': e
             })
             return Response({'msg': {'type': 'error', 'body': 'Unable to send OTP email'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def generate_initials(self, first_name, last_name):
+        return f"{(first_name[:1] + last_name[:1]).upper()}" if first_name and last_name else "??"
 
 
 class UserView(APIView):
@@ -326,3 +337,155 @@ class VerifyTokenView(APIView):
         Otherwise, return a 401 error.
         """
         return Response({'msg': {'type': 'success', 'body': 'Token is valid'}}, status=status.HTTP_200_OK)
+
+
+class AvatarSyncView(APIView):
+    def post(self, request):
+        incoming_filenames = request.data.get("filenames", [])
+
+        if not isinstance(incoming_filenames, list):
+            return Response({"detail": "Invalid data format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_filenames = set(
+            m.AvatarRegistry.objects.values_list("filename", flat=True)
+        )
+        incoming_set = set(incoming_filenames)
+
+        # Add new filenames
+        to_add = incoming_set - existing_filenames
+        m.AvatarRegistry.objects.bulk_create([
+            m.AvatarRegistry(filename=name) for name in to_add
+        ])
+
+        # Remove stale avatars (no longer in the avatar folder)
+        to_remove = existing_filenames - incoming_set
+        entries_to_remove = m.AvatarRegistry.objects.filter(
+            filename__in=to_remove
+        )
+
+        # Forcefully unassign any user using these avatars
+        for entry in entries_to_remove:
+            if entry.assigned_to:
+                user = entry.assigned_to
+                user.avatar = None
+                user.save()
+
+        removed = list(entries_to_remove.values_list("filename", flat=True))
+        entries_to_remove.delete()
+
+        return Response({
+            "added": list(to_add),
+            "removed": removed,
+            "unchanged": list(existing_filenames & incoming_set)
+        }, status=status.HTTP_200_OK)
+
+
+class ListAvatarsView(APIView):
+    """
+    GET /api/avatars/list/?filter=available|used|flagged|all
+    Default is 'available' if no filter is provided.
+
+    Usage Examples
+    GET /api/avatars/list/ → shows available avatars (default)
+
+    GET /api/avatars/list/?filter=used → shows in-use avatars
+
+    GET /api/avatars/list/?filter=flagged → shows avatars flagged for deletion
+
+    GET /api/avatars/list/?filter=all → shows everything
+
+    """
+
+    def get(self, request):
+        filter_type = request.query_params.get('filter', 'available')
+
+        if filter_type == 'available':
+            avatars = m.AvatarRegistry.objects.filter(
+                assigned_to__isnull=True,
+                flag_for_delete=False
+            )
+        elif filter_type == 'used':
+            avatars = m.AvatarRegistry.objects.filter(
+                assigned_to__isnull=False)
+        elif filter_type == 'flagged':
+            avatars = m.AvatarRegistry.objects.filter(flag_for_delete=True)
+        elif filter_type == 'all':
+            avatars = m.AvatarRegistry.objects.all()
+        else:
+            return Response({"detail": "Invalid filter type."}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = [
+            {
+                "filename": avatar.filename,
+                "assigned_to": avatar.assigned_to_id,
+                "flag_for_delete": avatar.flag_for_delete,
+            }
+            for avatar in avatars
+        ]
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class AssignAvatarView(APIView):
+    def post(self, request):
+        user = request.user
+        filename = request.data.get("filename")
+
+        try:
+            avatar_entry = m.AvatarRegistry.objects.get(
+                filename=filename,
+                assigned_to__isnull=True,
+                flag_for_delete=False
+            )
+        except m.AvatarRegistry.DoesNotExist:
+            return Response({"detail": "Avatar not available."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Release previous avatar if it was assigned
+        if user.registered_avatar:
+            user.registered_avatar.assigned_to = None
+            user.registered_avatar.save()
+
+        # Assign new avatar
+        user.avatar = {
+            "filename": avatar_entry.filename,
+            "bg_colour": "#ccc",  # Default or come from registry if stored there
+        }
+        user.save()
+
+        avatar_entry.assigned_to = user
+        avatar_entry.save()
+
+        return Response({"detail": "Avatar assigned."}, status=status.HTTP_200_OK)
+
+
+class UnassignAvatarView(APIView):
+    def post(self, request):
+        user = request.user
+        avatar_entry = getattr(user, 'registered_avatar', None)
+
+        if not avatar_entry:
+            return Response({"detail": "No avatar to unassign."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Always remove the avatar from the user
+        user.avatar = None
+        user.save()
+
+        # Always mark it unassigned and not in use
+        avatar_entry.assigned_to = None
+        avatar_entry.save()
+
+        return Response({"detail": "Avatar unassigned."}, status=status.HTTP_200_OK)
+
+
+class FlagAvatarForDeleteView(APIView):
+    def post(self, request):
+        filename = request.data.get("filename")
+        flag = request.data.get("flag", True)  # default to True
+
+        try:
+            avatar = m.AvatarRegistry.objects.get(filename=filename)
+        except m.AvatarRegistry.DoesNotExist:
+            return Response({"detail": "Avatar not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        avatar.flag_for_delete = flag
+        avatar.save()
+        return Response({"detail": f"Avatar {'flagged' if flag else 'unflagged'} for deletion."}, status=status.HTTP_200_OK)

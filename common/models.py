@@ -6,7 +6,7 @@ class Location(models.Model):
     location_id = models.BigAutoField(primary_key=True)
     description = models.CharField(max_length=50, blank=True, null=True)
     alias = models.CharField(max_length=50, blank=True, null=True)
-    # P:Prod, D:Dev, C:Concept, I:Infrastructure
+    # p:Prod, d:Dev, c:Concept, i:Infrastructure
     prod_dev_code = models.CharField(max_length=1, blank=True)
     is_active = models.BooleanField(blank=True, null=True, default=True)
     comment = models.TextField(blank=True, null=True)

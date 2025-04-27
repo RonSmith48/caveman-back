@@ -4,6 +4,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+import users.models as m
 import logging
 
 User = get_user_model()
@@ -16,7 +17,7 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['first_name', 'last_name',
-                  'initials', 'role', 'avatar', 'bg_colour', 'full_name']
+                  'initials', 'role', 'avatar', 'full_name']
 
     def validate_first_name(self, value):
         return value.capitalize()
@@ -31,14 +32,13 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
             'last_name', instance.last_name)
         instance.initials = validated_data.get('initials', instance.initials)
         instance.role = validated_data.get('role', instance.role)
-        instance.avatar = validated_data.get('avatar', instance.avatar)
-        instance.bg_colour = validated_data.get(
-            'bg_colour', instance.bg_colour)
+
+        # Overwrite avatar field with new full object (if provided)
+        if 'avatar' in validated_data:
+            instance.avatar = validated_data['avatar']
+
         instance.save()
         return instance
-
-    def get_full_name(self, obj):
-        return obj.get_full_name()
 
 
 class RegisterUserSerializer(serializers.ModelSerializer):
@@ -152,3 +152,9 @@ class VerifyAccountSerializer(serializers.Serializer):
                 "User account is already active.")
 
         return data
+
+
+class AvatarRegistrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = m.AvatarRegistry
+        fields = ['filename', 'in_use', 'assigned_to']

@@ -40,6 +40,29 @@ class MultifireGroupAdmin(admin.ModelAdmin):
     )
 
 
+class DrawChangeAdmin(admin.ModelAdmin):
+    list_display = (
+        'ring', 'type', 'quantity', 'user', 'status',
+        'created_at', 'updated_at',
+    )
+    list_filter = ('type', 'status', 'user', 'created_at')
+    search_fields = ('ring__description', 'ring__oredrive',
+                     'user__username', 'reason')
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('-created_at',)
+
+    fieldsets = (
+        (None, {
+            'fields': ('ring', 'type', 'quantity', 'user', 'reason', 'status')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at', 'is_active', 'approvers'),
+            'classes': ('collapse',),
+        }),
+    )
+
+
+admin.site.register(m.DrawChange, DrawChangeAdmin)
 admin.site.register(m.ProductionRing, ProdActualAdmin)
 admin.site.register(m.BoggedTonnes, BoggedTonnesAdmin)
 admin.site.register(m.MultifireGroup, MultifireGroupAdmin)

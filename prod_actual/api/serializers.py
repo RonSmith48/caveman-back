@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Sum
 from common.functions.constants import MANDATORY_RING_STATES
 import prod_actual.models as m
 
@@ -43,3 +44,51 @@ class RingStateSerializer(serializers.ModelSerializer):
 
     def get_is_mandatory(self, obj):
         return {"pri_state": obj.pri_state, "sec_state": obj.sec_state} in MANDATORY_RING_STATES
+
+
+class ProductionRingReportSerializer(serializers.ModelSerializer):
+    cu_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=3, source='concept_ring.modelled_cu', read_only=True)
+    au_gram_per_tonne = serializers.DecimalField(
+        max_digits=5, decimal_places=3, source='concept_ring.modelled_au', read_only=True)
+    density = serializers.DecimalField(
+        max_digits=4, decimal_places=3, source='concept_ring.density', read_only=True)
+
+    class Meta:
+        model = m.ProductionRing
+        fields = [
+            'location_id', 'level', 'oredrive', 'ring_number_txt', 'holes', 'drill_meters',
+            'azimuth', 'dump', 'burden', 'diameters',
+            'cu_pct', 'au_gram_per_tonne', 'density',
+            'blastsolids_volume', 'designed_tonnes', 'draw_percentage', 'x', 'y', 'z'
+        ]
+
+
+class DrawChangeNoteSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+
+    class Meta:
+        model = m.DrawChange
+        fields = ('quantity', 'user_name', 'reason', 'created_at')
+
+
+class OverdrawRingSerializer(serializers.ModelSerializer):
+    overdraw_total = serializers.SerializerMethodField()
+    draw_notes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = m.ProductionRing
+        fields = (
+            'location_id', 'level', 'oredrive', 'ring_number_txt', 'designed_tonnes',
+            'bogged_tonnes', 'overdraw_amount', 'overdraw_total', 'draw_notes'
+        )
+
+    def get_overdraw_total(self, obj):
+        return m.DrawChange.objects.filter(ring=obj, type='overdraw').aggregate(
+            total=Sum('quantity')
+        )['total'] or 0
+
+    def get_draw_notes(self, obj):
+        entries = m.DrawChange.objects.filter(
+            ring=obj, type='overdraw').order_by('-created_at')
+        return DrawChangeNoteSerializer(entries, many=True).data
