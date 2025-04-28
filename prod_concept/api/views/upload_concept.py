@@ -55,9 +55,9 @@ class ConceptRingsFileHandler():
     def handle_flow_concept_file(self, request, file):
         self.user = request.user
         self.read_flow_concept_file(file)
-        b = BlockAdjacencyFunctions()
-        b.remap_levels(self.touched_levels)
-        self.update_block_links()
+        #b = BlockAdjacencyFunctions()
+        #b.remap_levels(self.touched_levels)
+        #self.update_block_links()
 
         #=============== prob one time for now
         #md = MiningDirectionView()
@@ -74,7 +74,7 @@ class ConceptRingsFileHandler():
     def read_flow_concept_file(self, file):
         # Fetch the required columns from the settings
         try:
-            project_setting = ProjectSetting.objects.get(key='fm_file_headers')
+            project_setting = ProjectSetting.objects.get(key='concept_csv_headers')
             required_columns = project_setting.value
             required_columns_list = list(required_columns.values())
         except ProjectSetting.DoesNotExist:
