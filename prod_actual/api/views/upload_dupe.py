@@ -43,10 +43,7 @@ class UploadDupeView(generics.CreateAPIView):
 
 class DupeFileHandler():
     def __init__(self):
-        self.ring_states = {
-            state.pri_state: state
-            for state in m.RingState.objects.filter(sec_state__isnull=True)
-        }
+        self.load_ring_states()
 
         self.logger = logging.getLogger(__name__)
         self.error = None
@@ -56,6 +53,14 @@ class DupeFileHandler():
         # format YYYY-MM-DD
         self.dupe_file_date = ''
         self.dupe_shkey = ''
+
+    def load_ring_states(self):
+        cas = ConditionsAndStates()
+        cas.ensure_mandatory_ring_states()
+        self.ring_states = {
+            state.pri_state: state
+            for state in m.RingState.objects.filter(sec_state__isnull=True)
+        }
 
     def handle_dupe_file(self, request, f, date):
         # self.__init__() #  shouldnt be needed
@@ -122,8 +127,6 @@ class DupeFileHandler():
         return required - set(df.columns)
 
     def process_row(self, row):
-        cas = ConditionsAndStates()
-        cas.ensure_mandatory_ring_states()
 
         level = self.number_fix(row["Level"])
         oredrive = row["Drive"]
@@ -184,40 +187,18 @@ class DupeFileHandler():
 
             # Create RingStateChange entries based on available data
             if drill_shift:
-                m.RingStateChange.objects.create(
-                    prod_ring=ring,
-                    state=self.ring_states.get('Drilled'),
-                    shkey=drill_shift,
-                    operation_complete=True,
-                    mtrs_drilled=drill_meters,
-                    holes_completed=holes,
-                )
+                self.status_drilled(ring, drill_shift, holes, drill_meters)
 
             if charge_shift:
-                m.RingStateChange.objects.create(
-                    prod_ring=ring,
-                    state=self.ring_states.get('Charged'),
-                    shkey=charge_shift,
-                    operation_complete=True,
-                )
+                self.status_drilled(ring, drill_shift, holes, drill_meters)
+                self.status_charged(ring, charge_shift)
 
             if shiftfired:
-                # Record the firing event
-                m.RingStateChange.objects.create(
-                    prod_ring=ring,
-                    state=self.ring_states.get('Fired'),
-                    shkey=shiftfired,
-                    operation_complete=True,
-                )
+                self.status_drilled(ring, drill_shift, holes, drill_meters)
+                self.status_charged(ring, charge_shift)
+                self.status_fired(ring, shiftfired)
 
-                # Record the bogging event in the following shift
-                next_shift = Shkey.next_shkey(shiftfired)
-                m.RingStateChange.objects.create(
-                    prod_ring=ring,
-                    state=self.ring_states.get('Bogging'),
-                    shkey=next_shift,
-                    operation_complete=False,
-                )
+                
             if tonnes > 0:
                 self.update_create_bog_tonnes(tonnes, ring)
 
@@ -228,6 +209,40 @@ class DupeFileHandler():
             self.logger.error(f"Row: {row}")
             self.logger.exception("Traceback:")
             self.error = str(e)
+    
+    def status_drilled(self, ring, drill_shift, holes, drill_meters):
+        m.RingStateChange.objects.create(
+            prod_ring=ring,
+            state=self.ring_states.get('Drilled'),
+            shkey=drill_shift,
+            operation_complete=True,
+            mtrs_drilled=drill_meters,
+            holes_completed=holes,
+        )
+        
+    def status_charged(self, ring, charge_shift):
+        m.RingStateChange.objects.create(
+            prod_ring=ring,
+            state=self.ring_states.get('Charged'),
+            shkey=charge_shift,
+            operation_complete=True,
+        )
+        
+    def status_fired(self, ring, shiftfired):
+        m.RingStateChange.objects.create(
+            prod_ring=ring,
+            state=self.ring_states.get('Fired'),
+            shkey=shiftfired,
+            operation_complete=True,
+        )
+        # Record the bogging event in the following shift
+        next_shift = Shkey.next_shkey(shiftfired)
+        m.RingStateChange.objects.create(
+            prod_ring=ring,
+            state=self.ring_states.get('Bogging'),
+            shkey=next_shift,
+            operation_complete=False,
+        )
 
     def update_create_bog_tonnes(self, tonnes, existing_record):
         try:
