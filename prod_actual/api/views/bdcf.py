@@ -233,6 +233,11 @@ class BDCFRings():
         self.error_msg = None
         self.msg = None
 
+    def ring_number_namer(self, ring_num_txt):
+        if ring_num_txt and ring_num_txt[0].isdigit():
+            return f'R{ring_num_txt}'
+        return ring_num_txt
+
     def get_bogging_rings(self, request):
         current_rings = m.ProductionRing.objects.filter(
             is_active=True, status='Bogging').order_by('level', 'oredrive')
@@ -242,16 +247,17 @@ class BDCFRings():
         for ring in current_rings:
             # Determine the concatenated value for multi_fire_group
             if ring.multi_fire_group != '(M)':
+                ring_name = self.ring_number_namer(ring.ring_number_txt)
                 if ring.multi_fire_group:
                     if ring.multi_fire_group == '(MP)':
                         ring_text = f"{ring.level}_{
-                            ring.oredrive} R{ring.ring_number_txt}"
+                            ring.oredrive} {ring_name}"
                     else:
                         ring_text = f"{ring.level}_{
                             ring.oredrive} {ring.multi_fire_group}"
                 else:
                     ring_text = f"{ring.level}_{
-                        ring.oredrive} R{ring.ring_number_txt}"
+                        ring.oredrive} {ring_name}"
 
             # Append the formatted result with location_id
                 dropdown_options.append({
@@ -543,10 +549,12 @@ class BDCFRings():
                  'mtrs_drilled': change.mtrs_drilled,
                  'created_at': change.created_at,
                  'holes_completed': change.holes_completed,  # int
-                 'user': {'name': change.user.get_full_name(),
-                          'avatar': change.user.avatar,
-                          'initials': change.user.initials,
-                          'email': change.user.email}}
+                 'user': {
+                    'name': change.user.get_full_name() if change.user else "System",
+                    'avatar': change.user.avatar if change.user else None,
+                    'initials': change.user.initials if change.user else "sys",
+                    'email': change.user.email if change.user else None
+                          }}
             conditions.append(c)
         return conditions
 
