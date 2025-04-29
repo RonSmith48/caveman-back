@@ -257,7 +257,7 @@ class ProdOrphans():
 
     def fetch_threshold_dist(self):
         try:
-            project_setting = ProjectSetting.objects.get(key='ip_general')
+            project_setting = ProjectSetting.objects.get(key='drill_blast_orphans')
             dist_value = project_setting.value.get('distValue', None)
 
             if dist_value is not None:

@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = os.environ.get('ENV', 'development')
+env = os.environ.get('ENV', 'dev')
 dotenv_path = BASE_DIR / f'.env.{env}'
 load_dotenv(dotenv_path)
 
@@ -54,9 +54,9 @@ INSTALLED_APPS = [
     'report',
     'settings',
     'logs',
-    'menu',
-    'whatif',
-    'stp',
+    # 'menu',
+    # 'whatif',
+    # 'stp',
 ]
 
 MIDDLEWARE = [
