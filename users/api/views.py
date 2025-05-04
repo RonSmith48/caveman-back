@@ -18,7 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 
 from jwt.exceptions import ExpiredSignatureError
 
@@ -87,13 +87,10 @@ class RegisterUserView(APIView):
             serializer.is_valid(raise_exception=True)
             user = serializer.save()
 
-            # Ensure initials are set if not provided
             if not user.initials:
-                user.initials = self.generate_initials(
-                    user.first_name or '', user.last_name or '')
+                user.initials = self.generate_initials(user.first_name or '', user.last_name or '')
                 user.save()
 
-            # Optionally send OTP or handle other post-save actions
             err = self.send_otp_email(request, user.email)
             if err:
                 logger.error("OTP sending error", exc_info=True, extra={
@@ -101,30 +98,32 @@ class RegisterUserView(APIView):
                     'url': request.build_absolute_uri(),
                     'ip_address': request.META.get('REMOTE_ADDR'),
                 })
-                return Response({'msg': {'type': 'error', 'body': 'There was an error sending your OTP'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            else:
-                logger._log_user_activity("User registered", extra={
-                    'user': user,
-                    'url': request.build_absolute_uri(),
-                    'ip_address': request.META.get('REMOTE_ADDR'),
-                    'activity_type': 'user registered',
-                })
-                return Response({'msg': {'type': 'success', 'body': 'Registration successful'}, 'data': serializer.data}, status=status.HTTP_201_CREATED)
-        except IntegrityError:
-            logger.error("Database integrity error - email address already taken", exc_info=True, extra={
-                'user': request.user,
+                return Response({'msg': {'type': 'error', 'body': 'We couldn’t send your OTP email. Please try again.'}}, status=status.HTTP_200_OK)
+
+            logger.user_activity("User registered", extra={
+                'user': user,
                 'url': request.build_absolute_uri(),
                 'ip_address': request.META.get('REMOTE_ADDR'),
+                'activity_type': 'user registered',
             })
-            return Response({'msg': {'type': 'error', 'body': 'Email address already taken'}}, status=status.HTTP_409_CONFLICT)
+            return Response({'data': serializer.data}, status=status.HTTP_201_CREATED)
+
+        except ValidationError as ve:
+            # Check for specific known cases
+            if 'email' in ve.detail and 'already exists' in str(ve.detail['email']):
+                return Response({'msg': {'type': 'error', 'body': 'This email address is already registered.'}}, status=status.HTTP_200_OK)
+
+            # Fallback to general validation message
+            return Response({'msg': {'type': 'error', 'body': 'Invalid input. Please check the form and try again.'}}, status=status.HTTP_200_OK)
+
         except Exception as e:
-            logger.error("Registration error", exc_info=True, extra={
-                'user': request.user,
+            logger.error("Unexpected registration error", exc_info=True, extra={
+                'user': request.user if request.user.is_authenticated else None,
                 'url': request.build_absolute_uri(),
                 'ip_address': request.META.get('REMOTE_ADDR'),
                 'stack_trace': e
             })
-            return Response({'msg': {'type': 'error', 'body': 'Registration failed'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'msg': {'type': 'error', 'body': 'Something went wrong during registration'}}, status=status.HTTP_200_OK)
 
     def send_otp_email(self, request, email):
         subject = 'Your account verification email'
@@ -147,19 +146,19 @@ class RegisterUserView(APIView):
                 })
             except User.DoesNotExist:
                 logger.error("User not found for OTP", exc_info=True, extra={
-                    'user': request.user,
                     'url': request.build_absolute_uri(),
                     'ip_address': request.META.get('REMOTE_ADDR'),
                 })
+                print('Unable to store OTP in database')
                 return Response({'msg': {'type': 'error', 'body': 'Unable to store OTP in database'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except Exception as e:
             logger.error("Unable to send OTP email", exc_info=True, extra={
-                'user': request.user,
                 'url': request.build_absolute_uri(),
                 'ip_address': request.META.get('REMOTE_ADDR'),
                 'stack_trace': e
             })
+            print('Unable to send OTP email')
             return Response({'msg': {'type': 'error', 'body': 'Unable to send OTP email'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def generate_initials(self, first_name, last_name):
@@ -205,6 +204,7 @@ class UserView(APIView):
 
 class ActivateUserView(APIView):
     def post(self, request):
+        print("Activating user account", request.data)
         try:
             data = request.data
             serializer = s.VerifyAccountSerializer(data=data)
@@ -225,11 +225,14 @@ class ActivateUserView(APIView):
                 return Response({'msg': {'type': 'success', 'body': 'Account activation successful'}}, status=status.HTTP_200_OK)
 
             # logged in serializer
-            return Response({'msg': {'type': 'error', 'body': serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+            errors = serializer.errors
+            error_str = '\n'.join([f"{field}: {', '.join(messages)}" for field, messages in errors.items()])
+            return Response({'msg': {'type': 'error', 'body': error_str}}, status=status.HTTP_200_OK)
+
 
         except User.DoesNotExist:
             # logged in serializer
-            return Response({'msg': {'type': 'error', 'body': 'Invalid email'}}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': {'type': 'error', 'body': 'Invalid email'}}, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error("Account activation failed", exc_info=True, extra={
@@ -238,7 +241,7 @@ class ActivateUserView(APIView):
                 'ip_address': request.META.get('REMOTE_ADDR'),
                 'stack_trace': e
             })
-            return Response({'msg': {'type': 'error', 'body': 'Account activation failed'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'msg': {'type': 'error', 'body': 'Account activation failed'}}, status=status.HTTP_200_OK)
 
 
 class LoginView(TokenObtainPairView):

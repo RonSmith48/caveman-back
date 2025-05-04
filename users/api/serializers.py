@@ -44,13 +44,11 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
 class RegisterUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'last_name',
-                  'password', 'initials', 'role']
-
-    def validate_email(self, value):
-        # Use the CustomUserManager for normalizing the email
-        manager = User.objects.create_user(email=value)
-        return manager.normalize_email(value)
+        fields = ['email', 'first_name', 'last_name', 'password', 'initials', 'role']
+        extra_kwargs = {
+            'password': {'write_only': True},
+            'initials': {'required': False}  # allow blank in registration form, but still included
+        }
 
     def validate_first_name(self, value):
         return value.capitalize()
@@ -59,14 +57,13 @@ class RegisterUserSerializer(serializers.ModelSerializer):
         return value.capitalize()
 
     def create(self, validated_data):
-        # Assuming password will be set using `set_password`
-        validated_data['password'] = validated_data.pop('password')
-        validated_data['initials'] = "{}{}".format(
-            validated_data['first_name'][0], validated_data['last_name'][0]
-        )
-        user = User.objects.create(**validated_data)
-        # Hash the password using set_password
-        user.set_password(validated_data['password'])
+        password = validated_data.pop('password')
+        initials = validated_data.get('initials')
+        if not initials:
+            initials = f"{validated_data['first_name'][0]}{validated_data['last_name'][0]}".upper()
+        validated_data['initials'] = initials
+        user = User(**validated_data)
+        user.set_password(password)
         user.save()
         return user
 

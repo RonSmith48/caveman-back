@@ -49,8 +49,6 @@ INSTALLED_APPS = [
     'common',
     'prod_actual',
     'prod_concept',
-    'dev_actual',
-    'dev_concept',
     'report',
     'settings',
     'logs',
@@ -228,3 +226,11 @@ CORS_ORIGIN_ALLOW_ALL = True  # ==================debug
 CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://10\.\d+\.\d+\.\d+', ]
 CORS_ORIGIN_WHITELIST = ['http://localhost:3000', 'http://localhost']
 CORS_ALLOW_CREDENTIALS = True
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = '10.31.0.13'
+EMAIL_PORT = 25
+EMAIL_USE_TLS = False
+EMAIL_HOST_USER = ''
+EMAIL_HOST_PASSWORD = ''
+DEFAULT_FROM_EMAIL = 'Caveman <caveman@evolutionmining.com>'
