@@ -8,6 +8,7 @@ ENV PYTHONUNBUFFERED 1
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    nano \
     gnupg2 \
     apt-transport-https \
     unixodbc \

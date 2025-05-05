@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = os.environ.get('ENV', 'dev')
+env = 'prod'  # 'dev' or 'prod'
 dotenv_path = BASE_DIR / f'.env.{env}'
 load_dotenv(dotenv_path)
 
@@ -25,13 +25,13 @@ load_dotenv(dotenv_path)
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'ABAMw4VymC7RZ1rrV26dRum9nawpjEMgi5868zWDhftHEZeXLvsCsNkqV7EpW56ov'
+SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret')
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+print("Loading:", dotenv_path)
+print("DEBUG =", os.getenv("DEBUG"))
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
 
 # Application definition
@@ -59,6 +59,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -124,32 +125,32 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 
 DATABASES = {
+    #     'default': {
+    #         'ENGINE': 'django.db.backends.sqlite3' if os.getenv('DB_ENGINE') == 'sqlite' else 'mssql',
+    #         'NAME': os.getenv('DB_NAME') if os.getenv('DB_ENGINE') == 'sqlite' else os.getenv('DB_NAME'),
+    #         'USER': os.getenv('DB_USER', ''),
+    #         'PASSWORD': os.getenv('DB_PASSWORD', ''),
+    #         'HOST': os.getenv('DB_HOST', ''),
+    #         'PORT': os.getenv('DB_PORT', ''),
+    #         'OPTIONS': {
+    #             'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+    #         } if os.getenv('DB_ENGINE') == 'mssql' else {},
+    #     }
+    # }
+    # DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3' if os.getenv('DB_ENGINE') == 'sqlite' else 'mssql',
-        'NAME': os.getenv('DB_NAME') if os.getenv('DB_ENGINE') == 'sqlite' else os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER', ''),
-        'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', ''),
-        'PORT': os.getenv('DB_PORT', ''),
+        'ENGINE': 'mssql',
+        'NAME': 'MTS_UG_REPORTING_DEV',
+        'USER': 'MTSREPORTS',
+        'PASSWORD': 'FCxPzV1j4PGrWgg',
+        'HOST': '10.64.64.108',
+        'PORT': '1433',
         'OPTIONS': {
-            'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
-        } if os.getenv('DB_ENGINE') == 'mssql' else {},
+            'driver': 'ODBC Driver 17 for SQL Server',
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
+        },
     }
 }
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'mssql',
-#         'NAME': 'MTS_UG_REPORTING_DEV',
-#         'USER': 'MTSREPORTS',
-#         'PASSWORD': 'FCxPzV1j4PGrWgg',
-#         'HOST': 'EHO-DB01',
-#         'PORT': '1433',
-#         'OPTIONS': {
-#             'driver': 'ODBC Driver 18 for SQL Server',
-#             'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
-#         },
-#     }
-# }
 
 
 # Password validation
@@ -189,6 +190,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field

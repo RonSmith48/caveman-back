@@ -33,9 +33,12 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
         instance.initials = validated_data.get('initials', instance.initials)
         instance.role = validated_data.get('role', instance.role)
 
-        # Overwrite avatar field with new full object (if provided)
-        if 'avatar' in validated_data:
-            instance.avatar = validated_data['avatar']
+        # Handle avatar safely for MSSQL
+        avatar = validated_data.get('avatar', instance.avatar)
+        if 'avatar' == "":
+            instance.avatar = None
+        else:
+            instance.avatar = avatar
 
         instance.save()
         return instance
@@ -44,10 +47,12 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
 class RegisterUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'last_name', 'password', 'initials', 'role']
+        fields = ['email', 'first_name', 'last_name',
+                  'password', 'initials', 'role']
         extra_kwargs = {
             'password': {'write_only': True},
-            'initials': {'required': False}  # allow blank in registration form, but still included
+            # allow blank in registration form, but still included
+            'initials': {'required': False}
         }
 
     def validate_first_name(self, value):
@@ -60,7 +65,8 @@ class RegisterUserSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password')
         initials = validated_data.get('initials')
         if not initials:
-            initials = f"{validated_data['first_name'][0]}{validated_data['last_name'][0]}".upper()
+            initials = f"{validated_data['first_name'][0]}{validated_data['last_name'][0]}".upper(
+            )
         validated_data['initials'] = initials
         user = User(**validated_data)
         user.set_password(password)
