@@ -16,8 +16,17 @@ class CustomUserManager(BaseUserManager):
         email = self.normalize_email(email)
         first_name = first_name.capitalize()
         last_name = last_name.capitalize()
-        user = self.model(email=email, first_name=first_name,
-                          last_name=last_name, **extra_fields)
+
+        # Generate initials (e.g., John Smith -> JS)
+        initials = (first_name[:1] + last_name[:1]).upper()
+
+        user = self.model(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            initials=initials,
+            **extra_fields
+        )
         user.set_password(password)
         user.save()
         return user

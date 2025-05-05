@@ -26,6 +26,7 @@ import random
 import json
 import logging
 
+from users.api.avatar_colours import AvatarColours
 import users.api.serializers as s
 import users.models as m
 
@@ -89,6 +90,14 @@ class RegisterUserView(APIView):
 
             if not user.initials:
                 user.initials = self.generate_initials(user.first_name or '', user.last_name or '')
+                bg, fg = AvatarColours.get_random_avatar_color()
+
+                user.avatar = {
+                    "fg_colour": fg,
+                    "bg_colour": bg,
+                    "initials": user.initials,
+                    "filename": None,
+                }
                 user.save()
 
             err = self.send_otp_email(request, user.email)
