@@ -60,7 +60,7 @@ class UpdateProfileView(APIView):
                 'description': f'{user.get_full_name()} updated their profile',
             })
 
-            return Response({'msg': {'type': 'success', 'body': 'Profile updated successfully'}})
+            return Response({'msg': {'type': 'success', 'body': 'Profile updated successfully'}}, status=status.HTTP_200_OK)
 
         except DatabaseError:
             logger.error("Database error: Unable to update user profile", exc_info=True, extra={
@@ -89,25 +89,31 @@ class RegisterUserView(APIView):
             user = serializer.save()
 
             if not user.initials:
-                user.initials = self.generate_initials(user.first_name or '', user.last_name or '')
-                bg, fg = AvatarColours.get_random_avatar_color()
+                user.initials = self.generate_initials(
+                    user.first_name or '', user.last_name or '')
 
-                user.avatar = {
-                    "fg_colour": fg,
-                    "bg_colour": bg,
-                    "initials": user.initials,
-                    "filename": None,
-                }
-                user.save()
+            bg, fg = AvatarColours.get_random_avatar_color()
+            user.avatar = {
+                "fg_colour": fg,
+                "bg_colour": bg,
+                "filename": None,
+            }
+            user.save()
 
             err = self.send_otp_email(request, user.email)
             if err:
                 logger.error("OTP sending error", exc_info=True, extra={
-                    'user': user,
                     'url': request.build_absolute_uri(),
                     'ip_address': request.META.get('REMOTE_ADDR'),
                 })
-                return Response({'msg': {'type': 'error', 'body': 'We couldn’t send your OTP email. Please try again.'}}, status=status.HTTP_200_OK)
+                user.delete()
+
+                if isinstance(err, dict) and 'msg' in err:
+                    return Response(err, status=status.HTTP_200_OK)
+
+                fallback_msg = {'msg': {
+                    'type': 'error', 'body': 'We couldn’t send your OTP email. Please try again.'}}
+                return Response(fallback_msg, status=status.HTTP_200_OK)
 
             logger.user_activity("User registered", extra={
                 'user': user,
@@ -159,7 +165,7 @@ class RegisterUserView(APIView):
                     'ip_address': request.META.get('REMOTE_ADDR'),
                 })
                 print('Unable to store OTP in database')
-                return Response({'msg': {'type': 'error', 'body': 'Unable to store OTP in database'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return {'msg': {'type': 'error', 'body': 'There is a database error'}}
 
         except Exception as e:
             logger.error("Unable to send OTP email", exc_info=True, extra={
@@ -168,7 +174,7 @@ class RegisterUserView(APIView):
                 'stack_trace': e
             })
             print('Unable to send OTP email')
-            return Response({'msg': {'type': 'error', 'body': 'Unable to send OTP email'}}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return {'msg': {'type': 'error', 'body': 'Mail server is not responding'}}
 
     def generate_initials(self, first_name, last_name):
         return f"{(first_name[:1] + last_name[:1]).upper()}" if first_name and last_name else "??"
@@ -213,7 +219,6 @@ class UserView(APIView):
 
 class ActivateUserView(APIView):
     def post(self, request):
-        print("Activating user account", request.data)
         try:
             data = request.data
             serializer = s.VerifyAccountSerializer(data=data)
@@ -235,9 +240,9 @@ class ActivateUserView(APIView):
 
             # logged in serializer
             errors = serializer.errors
-            error_str = '\n'.join([f"{field}: {', '.join(messages)}" for field, messages in errors.items()])
+            error_str = '\n'.join(
+                [f"{field}: {', '.join(messages)}" for field, messages in errors.items()])
             return Response({'msg': {'type': 'error', 'body': error_str}}, status=status.HTTP_200_OK)
-
 
         except User.DoesNotExist:
             # logged in serializer

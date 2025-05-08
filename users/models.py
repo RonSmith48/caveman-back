@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group
 from django.contrib.auth.models import AbstractUser, AbstractBaseUser, BaseUserManager, PermissionsMixin
+from users.api.avatar_colours import AvatarColours
 
 
 class CustomUserManager(BaseUserManager):
@@ -19,13 +20,19 @@ class CustomUserManager(BaseUserManager):
 
         # Generate initials (e.g., John Smith -> JS)
         initials = (first_name[:1] + last_name[:1]).upper()
+        bg, fg = AvatarColours.get_random_avatar_color()
 
         user = self.model(
             email=email,
             first_name=first_name,
             last_name=last_name,
             initials=initials,
-            **extra_fields
+            avatar={
+                "fg_colour": fg,
+                "bg_colour": bg,
+                "filename": None,
+            },
+            ** extra_fields
         )
         user.set_password(password)
         user.save()
