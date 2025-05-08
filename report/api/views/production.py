@@ -2,12 +2,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
-
 from common.functions.shkey import Shkey
-
 from datetime import datetime, timedelta
 
 import prod_actual.models as pm
+import report.api.serializers as s
 
 
 class DCFReportView(APIView):
@@ -26,6 +25,13 @@ class BogVerifyReportView(APIView):
         tonnes = pr.get_bog_tonnes_shift(data)
 
         return Response(tonnes, status=status.HTTP_200_OK)
+
+
+class DataDupeView(APIView):
+    def get(self, request, *args, **kwargs):
+        rings = pm.ProductionRing.objects.filter(is_active=True)
+        serializer = s.DataDupeSerializer(rings, many=True)
+        return Response(serializer.data)
 
 
 class ProdReporting():
