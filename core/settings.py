@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = 'prod'  # 'dev' or 'prod'
+env = 'dev'  # 'dev' or 'prod'
 dotenv_path = BASE_DIR / f'.env.{env}'
 load_dotenv(dotenv_path)
 
@@ -28,8 +28,6 @@ load_dotenv(dotenv_path)
 SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-print("Loading:", dotenv_path)
-print("DEBUG =", os.getenv("DEBUG"))
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
@@ -125,32 +123,32 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 
 DATABASES = {
-    #     'default': {
-    #         'ENGINE': 'django.db.backends.sqlite3' if os.getenv('DB_ENGINE') == 'sqlite' else 'mssql',
-    #         'NAME': os.getenv('DB_NAME') if os.getenv('DB_ENGINE') == 'sqlite' else os.getenv('DB_NAME'),
-    #         'USER': os.getenv('DB_USER', ''),
-    #         'PASSWORD': os.getenv('DB_PASSWORD', ''),
-    #         'HOST': os.getenv('DB_HOST', ''),
-    #         'PORT': os.getenv('DB_PORT', ''),
-    #         'OPTIONS': {
-    #             'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
-    #         } if os.getenv('DB_ENGINE') == 'mssql' else {},
-    #     }
-    # }
-    # DATABASES = {
     'default': {
-        'ENGINE': 'mssql',
-        'NAME': 'MTS_UG_REPORTING_DEV',
-        'USER': 'MTSREPORTS',
-        'PASSWORD': 'FCxPzV1j4PGrWgg',
-        'HOST': '10.64.64.108',
-        'PORT': '1433',
+        'ENGINE': 'django.db.backends.sqlite3' if os.getenv('DB_ENGINE') == 'sqlite' else 'mssql',
+        'NAME': os.getenv('DB_NAME') if os.getenv('DB_ENGINE') == 'sqlite' else os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER', ''),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', ''),
+        'PORT': os.getenv('DB_PORT', ''),
         'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
-            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
-        },
+            'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;',
+        } if os.getenv('DB_ENGINE') == 'mssql' else {},
     }
 }
+# DATABASES = {
+# 'default': {
+#     'ENGINE': 'mssql',
+#     'NAME': 'MTS_UG_REPORTING_DEV',
+#     'USER': 'MTSREPORTS',
+#     'PASSWORD': 'FCxPzV1j4PGrWgg',
+#     'HOST': '10.64.64.108',
+#     'PORT': '1433',
+#     'OPTIONS': {
+#         'driver': 'ODBC Driver 17 for SQL Server',
+#         'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
+#     },
+# }
 
 
 # Password validation
@@ -229,10 +227,11 @@ CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://10\.\d+\.\d+\.\d+', ]
 CORS_ORIGIN_WHITELIST = ['http://localhost:3000', 'http://localhost']
 CORS_ALLOW_CREDENTIALS = True
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = '10.31.0.13'
-EMAIL_PORT = 25
-EMAIL_USE_TLS = False
-EMAIL_HOST_USER = ''
-EMAIL_HOST_PASSWORD = ''
-DEFAULT_FROM_EMAIL = 'Caveman <caveman@evolutionmining.com>'
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 1025))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'webmaster@localhost')
