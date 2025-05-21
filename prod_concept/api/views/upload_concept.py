@@ -55,13 +55,13 @@ class ConceptRingsFileHandler():
     def handle_flow_concept_file(self, request, file):
         self.user = request.user
         self.read_flow_concept_file(file)
-        #b = BlockAdjacencyFunctions()
-        #b.remap_levels(self.touched_levels)
-        #self.update_block_links()
+        # b = BlockAdjacencyFunctions()
+        # b.remap_levels(self.touched_levels)
+        # self.update_block_links()
 
-        #=============== prob one time for now
-        #md = MiningDirectionView()
-        #md.update_mining_direction()
+        # =============== prob one time for now
+        # md = MiningDirectionView()
+        # md.update_mining_direction()
 
         if self.error_msg:
             return {'msg': self.error_msg, 'msg_type': 'error'}
@@ -74,7 +74,8 @@ class ConceptRingsFileHandler():
     def read_flow_concept_file(self, file):
         # Fetch the required columns from the settings
         try:
-            project_setting = ProjectSetting.objects.get(key='concept_csv_headers')
+            project_setting = ProjectSetting.objects.get(
+                key='concept_csv_headers')
             required_columns = project_setting.value
             required_columns_list = list(required_columns.values())
         except ProjectSetting.DoesNotExist:
@@ -83,124 +84,67 @@ class ConceptRingsFileHandler():
             return
 
         try:
-            df = pd.read_csv(file, usecols=required_columns_list)
+            file.seek(0)
+            df = pd.read_csv(file, usecols=required_columns_list,
+                             encoding='utf-8', encoding_errors='replace')
         except ValueError as e:
             df_check = pd.read_csv(file)
             missing_columns = [
                 col for col in required_columns_list if col not in df_check.columns]
-
-            if missing_columns:
-                self.error_msg = f"Missing columns in the file: {
-                    ', '.join(missing_columns)}"
-            else:
-                self.error_msg = str(e)
-
+            self.error_msg = f"Missing columns in the file: {', '.join(missing_columns)}" if missing_columns else str(
+                e)
             self.logger.error(f"Error: {self.error_msg}")
             return
 
-        # Replace all the 'nan' values for 'None'
         df2 = df.fillna("")
 
-        try:
-            with transaction.atomic():
-                for _, row in df2.iterrows():
-                    try:
-                        drv_num = int(row[required_columns["drive"]])
-                        create_record = True
-                        bs_id = row[required_columns["id"]]
-                        level = self.number_fix(row[required_columns["level"]])
-                        self.touched_levels.add(level)
+        for _, row in df2.iterrows():
+            try:
+                drv_num = int(row[required_columns["drive"]])
+                bs_id = row[required_columns["id"]]
+                level = self.number_fix(row[required_columns["level"]])
+                self.touched_levels.add(level)
 
-                        # Succession info collection
-                        ordering = {
-                            'id': bs_id, 'successors': row[required_columns["successors"]], 'predecessors': row[required_columns["predecessors"]]}
-                        self.succession_data.append(ordering)
+                # Store successors/predecessors
+                self.succession_data.append({
+                    'id': bs_id,
+                    'successors': row[required_columns["successors"]],
+                    'predecessors': row[required_columns["predecessors"]],
+                })
 
-                        # Create a savepoint
-                        sid = transaction.savepoint()
+                obj, created = m.FlowModelConceptRing.objects.update_or_create(
+                    blastsolids_id=bs_id,
+                    defaults={
+                        'description': row[required_columns["name"]],
+                        'is_active': True,
+                        'level': level,
+                        'heading': row[required_columns["heading"]],
+                        'drive': self.number_fix(row[required_columns["drive"]]),
+                        'loc': row[required_columns["loc"]],
+                        'x': self.number_fix(row[required_columns["x"]]),
+                        'y': self.number_fix(row[required_columns["y"]]),
+                        'z': self.number_fix(row[required_columns["z"]]),
+                        'pgca_modelled_tonnes': self.number_fix(row[required_columns["tonnes"]]),
+                        'draw_zone': self.number_fix(row[required_columns["draw_zone"]]),
+                        'density': self.number_fix(row[required_columns["density"]]),
+                        'modelled_au': self.number_fix(row[required_columns["au"]]),
+                        'modelled_cu': self.number_fix(row[required_columns["cu"]]),
+                    }
+                )
 
-                        try:
-                            existing_record = m.FlowModelConceptRing.objects.get(
-                                blastsolids_id=bs_id)
-                            new_x = self.number_fix(row[required_columns["x"]])
-                            new_y = self.number_fix(row[required_columns["y"]])
-                            new_z = self.number_fix(row[required_columns["z"]])
-                            if self.has_location_changed(existing_record, new_x, new_y, new_z):
-                                self.create_orphaned_rings(
-                                    existing_record.location_id)
+                if created:
+                    self.rings_created += 1
+                else:
+                    self.rings_updated += 1
 
-                            # Update the existing record
-                            existing_record.description = row[required_columns["name"]]
-                            existing_record.inactive = False
-                            existing_record.level = level
-                            existing_record.heading = row[required_columns["heading"]]
-                            existing_record.drive = self.number_fix(
-                                row[required_columns["drive"]])
-                            existing_record.loc = row[required_columns["loc"]]
-                            existing_record.x = new_x
-                            existing_record.y = new_y
-                            existing_record.z = new_z
-                            existing_record.pgca_modelled_tonnes = self.number_fix(
-                                row[required_columns["tonnes"]])
-                            existing_record.draw_zone = self.number_fix(
-                                row[required_columns["draw_zone"]])
-                            existing_record.density = self.number_fix(
-                                row[required_columns["density"]])
-                            existing_record.modelled_au = self.number_fix(
-                                row[required_columns["au"]])
-                            existing_record.modelled_cu = self.number_fix(
-                                row[required_columns["cu"]])
-
-                            if self.error_msg:
-                                transaction.savepoint_rollback(sid)
-                                return
-                            existing_record.save()
-                            create_record = False
-                        except m.FlowModelConceptRing.DoesNotExist:
-                            # Create a new record
-                            m.FlowModelConceptRing.objects.create(
-                                description=row[required_columns["name"]],
-                                is_active=True,
-                                level=level,
-                                blastsolids_id=row[required_columns["id"]],
-                                heading=row[required_columns["heading"]],
-                                drive=self.number_fix(
-                                    row[required_columns["drive"]]),
-                                loc=row[required_columns["loc"]],
-                                x=self.number_fix(row[required_columns["x"]]),
-                                y=self.number_fix(row[required_columns["y"]]),
-                                z=self.number_fix(row[required_columns["z"]]),
-                                pgca_modelled_tonnes=self.number_fix(
-                                    row[required_columns["tonnes"]]),
-                                draw_zone=self.number_fix(
-                                    row[required_columns["draw_zone"]]),
-                                density=self.number_fix(
-                                    row[required_columns["density"]]),
-                                modelled_au=self.number_fix(
-                                    row[required_columns["au"]]),
-                                modelled_cu=self.number_fix(
-                                    row[required_columns["cu"]])
-                            )
-                        if self.error_msg:
-                            transaction.savepoint_rollback(sid)
-                            return
-
-                        # Release the savepoint
-                        transaction.savepoint_commit(sid)
-
-                        if create_record:
-                            self.rings_created += 1
-                        else:
-                            self.rings_updated += 1
-                    except ValueError:
-                        pass
-        except Exception as e:
-            self.logger.error(f"Error: {e}")
-            self.error_msg = str(e)
-            self.logger.error(f"Row causing the error: {row}")
-            self.logger.exception("Traceback:")
-            transaction.savepoint_rollback(sid)
-            return
+            except ValueError as ve:
+                self.logger.warning(f"Skipping row due to ValueError: {ve}")
+            except Exception as e:
+                self.logger.error(f"Error: {e}")
+                self.error_msg = str(e)
+                self.logger.error(f"Row causing the error: {row}")
+                self.logger.exception("Traceback:")
+                return
 
     def has_location_changed(self, existing_record, new_x, new_y, new_z):
         new_x = Decimal(new_x)
@@ -272,7 +216,8 @@ class ConceptRingsFileHandler():
                             direction='S'
                         )
                     else:
-                        print(f'{b['id']}: Successor {succ_id} not in concept database.')
+                        print(
+                            f'{b['id']}: Successor {succ_id} not in concept database.')
 
             # Create new links for predecessors
             if b['predecessors']:
@@ -287,4 +232,5 @@ class ConceptRingsFileHandler():
                             direction='P'
                         )
                     else:
-                        print(f'{b['id']}: Predecessor {succ_id} not in concept database.')
+                        print(
+                            f'{b['id']}: Predecessor {succ_id} not in concept database.')
