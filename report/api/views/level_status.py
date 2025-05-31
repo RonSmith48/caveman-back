@@ -28,7 +28,15 @@ class LevelStatusReportView(APIView):
 
 class LevelStatusCreateReportView(APIView):
     def get(self, request, *args, **kwargs):
+        # Read “draft” from query params (default to "false" if not provided)
+        draft_param = request.query_params.get('draft', 'false').lower()
+        is_draft = draft_param in ('true', '1')
+
+        # Instantiate your report and set the flag
         lsr = LevelStatusReport()
+        lsr.is_draft = is_draft
+
+        # Call whatever logic generates/saves your report
         reply = lsr.create_ls_report(request)
 
         return Response(reply, status=status.HTTP_200_OK)
@@ -38,6 +46,7 @@ class LevelStatusReport():
     def __init__(self) -> None:
         self.active_levels = set()
         self.active_drives = []
+        self.is_draft = None
 
         # shared attributes
         self.level = None
@@ -64,6 +73,7 @@ class LevelStatusReport():
             return {"msg": {'body': "An error occurred", 'type': 'error'}}
 
     def create_ls_report(self, request):
+        print("request", request.user)
         right_now = Shkey.today_shkey()
 
         def get_current_shift():
@@ -84,7 +94,8 @@ class LevelStatusReport():
 
                 'report_date': report_date_str,
                 'shift': shift,
-                'report': ls_report
+                'report': ls_report,
+                'is_draft': self.is_draft
             }
             self.delete_ls_report()
 
