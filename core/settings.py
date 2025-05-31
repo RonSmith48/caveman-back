@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = 'dev'  # 'dev' or 'prod'
+env = 'prod'  # 'dev' or 'prod'
 dotenv_path = BASE_DIR / f'.env.{env}'
 load_dotenv(dotenv_path)
 
@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework_simplejwt',
     'rest_framework',
     'common',
@@ -132,7 +133,8 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', ''),
         'OPTIONS': {
             'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
-            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;',
+            'unicode_results': True,
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;charset=utf8',
         } if os.getenv('DB_ENGINE') == 'mssql' else {},
     }
 }
@@ -222,7 +224,7 @@ LOGGING = {
     },
 }
 
-CORS_ORIGIN_ALLOW_ALL = True  # ==================debug
+CORS_ALLOW_ALL_ORIGINS = True  # ==================debug
 CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://10\.\d+\.\d+\.\d+', ]
 CORS_ORIGIN_WHITELIST = ['http://localhost:3000', 'http://localhost']
 CORS_ALLOW_CREDENTIALS = True
