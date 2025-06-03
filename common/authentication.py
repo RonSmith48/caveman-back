@@ -3,12 +3,8 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.settings import api_settings
-from rest_framework_simplejwt.tokens import UntypedToken
-from rest_framework_simplejwt.backends import TokenBackend
-from rest_framework_simplejwt.state import token_backend
 
 from django.contrib.auth import get_user_model
-
 from users.utils import get_or_create_remote_user
 
 
@@ -18,7 +14,7 @@ class JWTAuthenticationFetchUser(JWTAuthentication):
     will fetch from the Auth server and create the local row.
     """
 
-    def get_user(self, validated_token):
+    def get_user(self, validated_token, raw_token):
         """
         Attempt to return RemoteUser. If it doesn't exist locally, fetch & create it.
         """
@@ -38,7 +34,7 @@ class JWTAuthenticationFetchUser(JWTAuthentication):
             return UserModel.objects.get(pk=user_id)
         except UserModel.DoesNotExist:
             # Fetch‐and‐create logic:
-            remote_user = get_or_create_remote_user(user_id)
+            remote_user = get_or_create_remote_user(user_id, raw_token)
             if remote_user is None:
                 # If the Auth server did not return a valid user, fail:
                 raise AuthenticationFailed(
@@ -61,5 +57,5 @@ class JWTAuthenticationFetchUser(JWTAuthentication):
         validated_token = self.get_validated_token(raw_token)
 
         # Now get_user() will auto-create if missing
-        user = self.get_user(validated_token)
+        user = self.get_user(validated_token, raw_token)
         return (user, validated_token)

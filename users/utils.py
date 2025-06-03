@@ -1,5 +1,6 @@
 
 import requests
+import sys
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
@@ -11,22 +12,30 @@ from users.models import RemoteUser
 USER_CACHE_TTL = timedelta(days=1)
 
 
-def fetch_user_from_auth_server(user_id):
+def fetch_user_from_auth_server(user_id, token):
     """
-    Call GET <AUTH_SERVER_URL>/api/users/<user_id>/,
+    Call GET <AUTH_SERVER_URL>/users/user/<user_id>/,
     return the JSON dict, or None on failure.
     """
-    url = f"{settings.AUTH_SERVER_URL.rstrip('/')}/users/{user_id}/"
+    url = f"{settings.AUTH_SERVER_URL.rstrip('/')}/users/user/{user_id}/"
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Accept': 'application/json',
+    }
     try:
-        resp = requests.get(url, timeout=3.0)
+        resp = requests.get(url, headers=headers, timeout=3.0)
+        print(f"    ← status {resp.status_code}", file=sys.stdout)
         resp.raise_for_status()
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"    !! fetch error: {e}", file=sys.stdout)
         return None
 
-    return resp.json()
+    data = resp.json()
+    print(f"    ← JSON: {data}", file=sys.stdout)
+    return data
 
 
-def get_or_create_remote_user(user_id):
+def get_or_create_remote_user(user_id, token):
     """
     Return a RemoteUser for this ID. If no local row exists, or if it's older
     than USER_CACHE_TTL, fetch from auth server and save.
@@ -40,7 +49,7 @@ def get_or_create_remote_user(user_id):
                   user.updated_at) > USER_CACHE_TTL)
 
     if need_fetch:
-        data = fetch_user_from_auth_server(user_id)
+        data = fetch_user_from_auth_server(user_id, token)
         if not data:
             # Auth server couldn’t return a user → we give up (user stays None)
             return user

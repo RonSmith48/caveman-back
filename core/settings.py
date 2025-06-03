@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -89,9 +90,13 @@ TEMPLATES = [
 ]
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'common.authentication.JWTAuthenticationFetchUser',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ]
 }
 
 SIMPLE_JWT = {
@@ -228,7 +233,7 @@ CORS_ALLOW_ALL_ORIGINS = True  # ==================debug
 CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://10\.\d+\.\d+\.\d+', ]
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
-    'http://localhost']
+    'http://localhost', 'http://127.0.0.1:8000']
 CORS_ORIGIN_WHITELIST = [
     'http://localhost:3000',
     'http://localhost',
@@ -244,3 +249,7 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'webmaster@localhost')
+
+print("▶︎ Using AUTH_USER_MODEL:", AUTH_USER_MODEL, file=sys.stdout)
+print("▶︎ JWT auth class:",
+      REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'][0], file=sys.stdout)
