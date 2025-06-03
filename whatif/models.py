@@ -1,6 +1,6 @@
 from django.db import models
 from django.db.models import JSONField
-from users.models import CustomUser
+from users.models import RemoteUser
 from common.models import Location
 from prod_actual.models import ProductionRing
 from prod_concept.models import FlowModelConceptRing
@@ -13,7 +13,7 @@ class Scenario(models.Model):
     scenario = models.AutoField(primary_key=True)
     name = models.CharField(max_length=20, blank=True, null=True)
     owner = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True)
+        RemoteUser, on_delete=models.SET_NULL, blank=True, null=True)
     datetime_stamp = models.DateTimeField(auto_now_add=True)
     json = JSONField(blank=True, null=True)
 

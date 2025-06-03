@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = 'prod'  # 'dev' or 'prod'
+env = 'dev'  # 'dev' or 'prod'
 dotenv_path = BASE_DIR / f'.env.{env}'
 load_dotenv(dotenv_path)
 
@@ -31,6 +31,8 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
+AUTH_SERVER_URL = 'http://127.0.0.1:8000'
+AUTH_USER_MODEL = 'users.RemoteUser'
 
 # Application definition
 
@@ -171,8 +173,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-AUTH_USER_MODEL = 'users.CustomUser'
-
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
@@ -226,7 +226,14 @@ LOGGING = {
 
 CORS_ALLOW_ALL_ORIGINS = True  # ==================debug
 CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://10\.\d+\.\d+\.\d+', ]
-CORS_ORIGIN_WHITELIST = ['http://localhost:3000', 'http://localhost']
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost']
+CORS_ORIGIN_WHITELIST = [
+    'http://localhost:3000',
+    'http://localhost',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1']
 CORS_ALLOW_CREDENTIALS = True
 
 EMAIL_BACKEND = os.getenv(
