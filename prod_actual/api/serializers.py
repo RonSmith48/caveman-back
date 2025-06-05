@@ -58,7 +58,7 @@ class ProductionRingReportSerializer(serializers.ModelSerializer):
         model = m.ProductionRing
         fields = [
             'location_id', 'level', 'oredrive', 'ring_number_txt', 'holes', 'drill_meters',
-            'azimuth', 'dump', 'burden', 'diameters',
+            'azimuth', 'dump', 'burden', 'diameters', 'mineral4',
             'cu_pct', 'au_gram_per_tonne', 'density',
             'blastsolids_volume', 'designed_tonnes', 'draw_percentage', 'x', 'y', 'z'
         ]

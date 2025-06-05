@@ -79,6 +79,6 @@ class DataDupeSerializer(serializers.ModelSerializer):
             'design_date', 'markup_date', 'fireby_date', 'fired_shift',
             'bog_complete_shift', 'markup_for', 'blastsolids_volume',
             'designed_tonnes', 'draw_percentage', 'overdraw_amount', 'draw_deviation', 'bogged_tonnes',
-            'has_pyrite', 'in_water_zone', 'is_making_water',
-            'in_overdraw_zone', 'in_flow'
+            'has_pyrite', 'in_water_zone', 'is_making_water', 'multi_fire_group',
+            'in_overdraw_zone', 'in_flow', 'mineral3', 'mineral4', 'dist_to_wop', 'dist_to_eop'
         ]
