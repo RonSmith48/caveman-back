@@ -42,6 +42,7 @@ class LevelStatusReport():
         # shared attributes
         self.level = None
         self.oredrive = None
+        self.sleep_days = 28  # days after which a ring is considered overslept
 
     def fetch_ls_report(self):
         try:
@@ -272,9 +273,9 @@ class LevelStatusReport():
         # charge_shift is a shkey
         if not ring.charge_shift:
             return False
-
+        print(f"Checking overslept for ring: {ring.ring_number_txt} with charge_shift: {ring.charge_shift}")
         charge_date = date.fromisoformat(ring.charge_shift)
-        overslept_date = charge_date + timedelta(days=28)
+        overslept_date = charge_date + timedelta(days=self.sleep_days)
 
         return date.today() > overslept_date
 
