@@ -1,4 +1,4 @@
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
@@ -7,7 +7,6 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 import users.models as m
 import logging
 
-User = get_user_model()
 logger = logging.getLogger('custom_logger')
 
 
@@ -15,7 +14,7 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='get_full_name', read_only=True)
 
     class Meta:
-        model = User
+        model = m.RemoteUser
         fields = ['first_name', 'last_name',
                   'initials', 'role', 'avatar', 'full_name']
 
@@ -46,7 +45,7 @@ class UpdateUserProfileSerializer(serializers.ModelSerializer):
 
 class RegisterUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
+        model = m.RemoteUser
         fields = ['email', 'first_name', 'last_name',
                   'password', 'initials', 'role']
         extra_kwargs = {
@@ -68,7 +67,7 @@ class RegisterUserSerializer(serializers.ModelSerializer):
             initials = f"{validated_data['first_name'][0]}{validated_data['last_name'][0]}".upper(
             )
         validated_data['initials'] = initials
-        user = User(**validated_data)
+        user = m.RemoteUser(**validated_data)
         user.set_password(password)
         user.save()
         return user
@@ -78,7 +77,7 @@ class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
 
     class Meta:
-        model = User
+        model = m.RemoteUser
         exclude = ['password', 'otp']  # Exclude sensitive fields
 
     def get_full_name(self, obj):
@@ -129,8 +128,8 @@ class VerifyAccountSerializer(serializers.Serializer):
         otp = data.get('otp')
 
         try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+            user = m.RemoteUser.objects.get(email=email)
+        except m.RemoteUser.DoesNotExist:
             logger.warning("Invalid email entered", exc_info=True, extra={
                 'additional_info': email,
                 'url': 'verify account',
@@ -155,9 +154,3 @@ class VerifyAccountSerializer(serializers.Serializer):
                 "User account is already active.")
 
         return data
-
-
-class AvatarRegistrySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = m.AvatarRegistry
-        fields = ['filename', 'in_use', 'assigned_to']

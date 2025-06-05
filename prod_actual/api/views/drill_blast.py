@@ -257,16 +257,17 @@ class ProdOrphans():
 
     def fetch_threshold_dist(self):
         try:
-            project_setting = ProjectSetting.objects.get(key='drill_blast_orphans')
+            project_setting = ProjectSetting.objects.get(
+                key='drill_blast_orphans')
             dist_value = project_setting.value.get('distValue', None)
 
             if dist_value is not None:
                 self.threshold_dist = round(float(dist_value), 1)
             else:
-                self.threshold_dist = 2
-                self.warning_msg = "distValue not found in project setting; using default 2m"
+                self.threshold_dist = 5
+                self.warning_msg = "distValue not found in project setting; using default 5m"
         except (ProjectSetting.DoesNotExist, ValueError, TypeError) as e:
-            self.threshold_dist = 2
+            self.threshold_dist = 5
             self.warning_msg = f"Could not fetch threshold; using default 2m. Error: {e}"
 
     def is_orphan(self, location_id):

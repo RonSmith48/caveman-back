@@ -1,6 +1,6 @@
 from django.db import models
 from django.db.models import JSONField
-from users.models import CustomUser
+from users.models import RemoteUser
 from common.models import Location
 from common.functions.constants import MANDATORY_RING_STATES
 from prod_concept.models import FlowModelConceptRing
@@ -98,7 +98,7 @@ class BoggedTonnes(models.Model):
         max_digits=6, decimal_places=1, default=0)
     shkey = models.CharField(max_length=10)
     entered_by = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True)
+        RemoteUser, on_delete=models.SET_NULL, blank=True, null=True)
     datetime_stamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -122,11 +122,11 @@ class MultifireGroup(models.Model):
     group_rings = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     entered_by = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='mf_creator')
+        RemoteUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='mf_creator')
     # In actual fact, this should be called a deletion, custom rings are deleted.
     # This is a record of who deleted and when.
     deactivated_by = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='mf_deactivator')
+        RemoteUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='mf_deactivator')
     updated_at = models.DateTimeField(auto_now=True)
 
 
@@ -134,10 +134,10 @@ class RingComments(models.Model):
     ring_id = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
     is_active = models.BooleanField(default=True)
     deactivated_by = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='editor')
+        RemoteUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='editor')
     department = models.CharField(max_length=50)
     user = models.ForeignKey(
-        CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='author')
+        RemoteUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='author')
     datetime = models.DateTimeField(auto_now_add=True)
     comment = models.TextField()
     # eg. driller, loader, chargeup
@@ -162,13 +162,13 @@ class RingStateChange(models.Model):
     ring_state_id = models.BigAutoField(primary_key=True)
     is_active = models.BooleanField(default=True)
     deactivated_by = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, related_name='change_deactivation', blank=True, null=True)
+        RemoteUser, on_delete=models.CASCADE, related_name='change_deactivation', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     prod_ring = models.ForeignKey(ProductionRing, on_delete=models.CASCADE)
     shkey = models.CharField(max_length=20, blank=True, null=True)
     user = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, related_name='change_activation', blank=True, null=True)
+        RemoteUser, on_delete=models.CASCADE, related_name='change_activation', blank=True, null=True)
     # This is a combination of state and condition
     state = models.ForeignKey(RingState, on_delete=models.CASCADE)
     comment = models.TextField(blank=True, null=True)
@@ -206,7 +206,7 @@ class DrawChange(models.Model):
     quantity = models.SmallIntegerField()
     is_active = models.BooleanField(default=True)
     user = models.ForeignKey(
-        CustomUser, on_delete=models.CASCADE, blank=True, null=True)
+        RemoteUser, on_delete=models.CASCADE, blank=True, null=True)
     reason = models.TextField(blank=True, null=True)
     type = models.CharField(
         max_length=15, choices=TYPE_CHOICES, null=True, blank=True)

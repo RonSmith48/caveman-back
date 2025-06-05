@@ -1,73 +1,35 @@
 import json
+import uuid
 from django.db import models
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
-from django.contrib.auth.models import Group
-from django.contrib.auth.models import AbstractUser, AbstractBaseUser, BaseUserManager, PermissionsMixin
-from users.api.avatar_colours import AvatarColours
+# from django.utils.translation import gettext_lazy as _
 
 
-class CustomUserManager(BaseUserManager):
-
-    # ======= THESE METHODS USED WHEN CREATING USERS VIA COMMAND LINE (MANAGE.PY) =======#
-    def create_user(self, email, password, first_name, last_name, **extra_fields):
-        if not email:
-            raise ValueError("Users must have an email address")
-
-        email = self.normalize_email(email)
-        first_name = first_name.capitalize()
-        last_name = last_name.capitalize()
-
-        # Generate initials (e.g., John Smith -> JS)
-        initials = (first_name[:1] + last_name[:1]).upper()
-        bg, fg = AvatarColours.get_random_avatar_color()
-
-        user = self.model(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            initials=initials,
-            avatar={
-                "fg_colour": fg,
-                "bg_colour": bg,
-                "filename": None,
-            },
-            ** extra_fields
-        )
-        user.set_password(password)
-        user.save()
-        return user
-
-    def create_superuser(self, email, password, first_name, last_name, **extra_fields):
-        extra_fields = {**extra_fields, "is_staff": True,
-                        "is_superuser": True, "is_active": True}
-
-        user = self.create_user(email=email, password=password,
-                                first_name=first_name, last_name=last_name, **extra_fields)
-
-        return user
-
-
-class CustomUser(AbstractBaseUser, PermissionsMixin):
+class RemoteUser(models.Model):
+    """
+    A local “mirror” of the CustomUser living on the auth server.
+    We only keep the fields we display frequently, and track a last‐updated timestamp.
+    """
+    id = models.PositiveBigIntegerField(
+        primary_key=True,
+        editable=False,
+        help_text="Primary key from the auth‐server’s CustomUser"
+    )
     first_name = models.CharField(max_length=255)
     last_name = models.CharField(max_length=255)
     initials = models.CharField(max_length=3, null=True, blank=True)
     email = models.CharField(max_length=255, unique=True)
-    password = models.CharField(max_length=255)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
     start_date = models.DateTimeField(default=timezone.now)
     role = models.CharField(max_length=30, null=True, blank=True)
     permissions = models.JSONField(null=True, blank=True)
-    otp = models.CharField(max_length=6, null=True, blank=True)
     avatar = models.JSONField(null=True, blank=True)
-    username = None
-
-    objects = CustomUserManager()
+    updated_at = models.DateTimeField(auto_now=True)
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['first_name', 'last_name']
+    REQUIRED_FIELDS = []
 
     def get_full_name(self):
         return self.first_name + ' ' + self.last_name
@@ -75,17 +37,16 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
+    @property
+    def is_authenticated(self):
+        """
+        Always return True, as this model is a mirror of the auth server's user.
+        """
+        return True
 
-class AvatarRegistry(models.Model):
-    filename = models.CharField(max_length=200, unique=True)
-    assigned_to = models.OneToOneField(
-        'users.CustomUser',
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='registered_avatar'
-    )
-    flag_for_delete = models.BooleanField(default=False)
-
-    def __str__(self):
-        return self.filename
+    @property
+    def is_anonymous(self):
+        """
+        Always return False, as this model is a mirror of the auth server's user.
+        """
+        return False
