@@ -7,6 +7,8 @@ from rest_framework_simplejwt.settings import api_settings
 from django.contrib.auth import get_user_model
 from users.utils import get_or_create_remote_user
 
+import jwt, datetime
+from django.utils import timezone
 
 class JWTAuthenticationFetchUser(JWTAuthentication):
     """

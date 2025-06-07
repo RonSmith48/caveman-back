@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  auth:
+    image: my-auth-server:latest
+    env_file:
+      - ./.env.dev
+    ports:
+      - "${AUTH_HOST_PORT}:8000"
+
+  api:
+    image: my-backend-api:latest
+    env_file:
+      - ./.env.dev
+    ports:
+      - "${API_HOST_PORT}:8001"
+
+  wagtail:
+    image: my-wagtail-cms:latest
+    env_file:
+      - ./.env.dev
+    ports:
+      - "${CMS_HOST_PORT}:8002"
+
+  frontend:
+    image: my-frontend:latest
+    env_file:
+      - ./.env.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_AUTH_URL=${AUTH_URL}
+      - REACT_APP_API_URL=${API_URL}
+      - REACT_APP_CMS_URL=${CMS_URL}
+
+networks:
+  default:
+    name: my_app_net

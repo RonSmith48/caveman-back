@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = 'dev'  # 'dev' or 'prod'
-dotenv_path = BASE_DIR / f'.env.{env}'
+ENV = os.getenv('ENV', 'dev') 
+dotenv_path = BASE_DIR / f'.env.{ENV}'
 load_dotenv(dotenv_path)
 
 
@@ -39,7 +39,6 @@ AUTH_USER_MODEL = 'users.RemoteUser'
 
 INSTALLED_APPS = [
     'django.contrib.admin',
-    'users',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -48,13 +47,13 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework_simplejwt',
     'rest_framework',
+    'users',
     'common',
     'prod_actual',
     'prod_concept',
     'report',
     'settings',
     'logs',
-    # 'menu',
     # 'whatif',
     # 'stp',
 ]
@@ -100,27 +99,11 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    ''' Dear security auditor or IT person
-    I am deliberately using long expiries instead of going through the pain
-    of implementing sliding tokens.  It's on a secure network and replaces
-    files with zero security in many cases, so chill out.'''
-
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=10),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=10),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': SECRET_KEY,  # Ensure this key is consistent across all components
-    'AUTH_HEADER_TYPES': ('Bearer',),  # Token type in Authorization header
-    'USER_ID_FIELD': 'id',
+    'SIGNING_KEY': SECRET_KEY,
     'USER_ID_CLAIM': 'user_id',
-    'TOKEN_TYPE_CLAIM': 'token_type',
-    'JTI_CLAIM': 'jti',  # Ensure consistency in how tokens are identified and used
-    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'exp',
-    'LEEWAY': 10,  # Allow some leeway if the issue is due to slight clock differences
-    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
-    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=10),
+    'LEEWAY': 10,
 }
 
 WSGI_APPLICATION = 'core.wsgi.application'
@@ -129,35 +112,30 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3' if os.getenv('DB_ENGINE') == 'sqlite' else 'mssql',
-        'NAME': os.getenv('DB_NAME') if os.getenv('DB_ENGINE') == 'sqlite' else os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER', ''),
-        'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', ''),
-        'PORT': os.getenv('DB_PORT', ''),
-        'OPTIONS': {
-            'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
-            'unicode_results': True,
-            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;charset=utf8',
-        } if os.getenv('DB_ENGINE') == 'mssql' else {},
+DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite')
+if DB_ENGINE == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / os.getenv('DB_NAME', 'db.sqlite3'),
+        }
     }
-}
-# DATABASES = {
-# 'default': {
-#     'ENGINE': 'mssql',
-#     'NAME': 'MTS_UG_REPORTING_DEV',
-#     'USER': 'MTSREPORTS',
-#     'PASSWORD': 'FCxPzV1j4PGrWgg',
-#     'HOST': '10.64.64.108',
-#     'PORT': '1433',
-#     'OPTIONS': {
-#         'driver': 'ODBC Driver 17 for SQL Server',
-#         'extra_params': 'TrustServerCertificate=yes;Encrypt=no;'
-#     },
-# }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': os.getenv('DB_ENGINE'),
+            'NAME':     os.getenv('DB_NAME'),
+            'USER':     os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST':     os.getenv('DB_HOST'),
+            'PORT':     os.getenv('DB_PORT'),
+            'OPTIONS': {
+                'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+                'unicode_results': True,
+                'extra_params': 'TrustServerCertificate=yes;Encrypt=no;charset=utf8',
+            } if os.getenv('DB_ENGINE') == 'mssql' else {},
+        }
+    }
 
 
 # Password validation
@@ -229,17 +207,14 @@ LOGGING = {
     },
 }
 
-CORS_ALLOW_ALL_ORIGINS = True  # ==================debug
-CORS_ALLOWED_ORIGIN_REGEXES = [r'^http://10\.\d+\.\d+\.\d+', ]
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost', 'http://127.0.0.1:8000']
-CORS_ORIGIN_WHITELIST = [
-    'http://localhost:3000',
-    'http://localhost',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1']
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGIN_REGEXES = os.getenv(
+    'CORS_ALLOWED_ORIGIN_REGEXES', '').split(',') if os.getenv('CORS_ALLOWED_ORIGIN_REGEXES') else []
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS', '').split(',') if os.getenv('CORS_ALLOWED_ORIGINS') else []
+CORS_ORIGIN_WHITELIST = os.getenv(
+    'CORS_ORIGIN_WHITELIST', '').split(',') if os.getenv('CORS_ORIGIN_WHITELIST') else []
+CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'False') == 'True'
 
 EMAIL_BACKEND = os.getenv(
     'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
@@ -250,6 +225,3 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'webmaster@localhost')
 
-print("▶︎ Using AUTH_USER_MODEL:", AUTH_USER_MODEL, file=sys.stdout)
-print("▶︎ JWT auth class:",
-      REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'][0], file=sys.stdout)

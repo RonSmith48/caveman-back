@@ -18,21 +18,17 @@ def fetch_user_from_auth_server(user_id, token):
     return the JSON dict, or None on failure.
     """
     url = f"{settings.AUTH_SERVER_URL.rstrip('/')}/users/user/{user_id}/"
+    # Ensure token is a str, not bytes:
+    raw_token = token.decode('utf-8') if isinstance(token, bytes) else token
+
     headers = {
-        'Authorization': f'Bearer {token}',
+        'Authorization': f'Bearer {raw_token}',
         'Accept': 'application/json',
     }
-    try:
-        resp = requests.get(url, headers=headers, timeout=3.0)
-        print(f"    ← status {resp.status_code}", file=sys.stdout)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"    !! fetch error: {e}", file=sys.stdout)
-        return None
+    resp = requests.get(url, headers=headers, timeout=3.0)
+    resp.raise_for_status()
+    return resp.json()
 
-    data = resp.json()
-    print(f"    ← JSON: {data}", file=sys.stdout)
-    return data
 
 
 def get_or_create_remote_user(user_id, token):
@@ -53,6 +49,7 @@ def get_or_create_remote_user(user_id, token):
         if not data:
             # Auth server couldn’t return a user → we give up (user stays None)
             return user
+        data = data.get('data', {})
 
         # Map JSON from auth to your RemoteUser fields:
         avatar = data.get('avatar', {}) or {}
