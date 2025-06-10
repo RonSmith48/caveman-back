@@ -112,28 +112,28 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite')
-if DB_ENGINE == 'sqlite':
+BACK_DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite')
+if BACK_DB_ENGINE == 'sqlite':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / os.getenv('DB_NAME', 'db.sqlite3'),
+            'NAME': BASE_DIR / os.getenv('BACK_DB_NAME', 'db.sqlite3'),
         }
     }
 else:
     DATABASES = {
         'default': {
-            'ENGINE': os.getenv('DB_ENGINE'),
-            'NAME':     os.getenv('DB_NAME'),
-            'USER':     os.getenv('DB_USER'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST':     os.getenv('DB_HOST'),
-            'PORT':     os.getenv('DB_PORT'),
+            'ENGINE': BACK_DB_ENGINE,
+            'NAME':     os.getenv('BACK_DB_NAME'),
+            'USER':     os.getenv('BACK_DB_USER'),
+            'PASSWORD': os.getenv('BACK_DB_PASSWORD'),
+            'HOST':     os.getenv('BACK_DB_HOST'),
+            'PORT':     os.getenv('BACK_DB_PORT'),
             'OPTIONS': {
-                'driver': os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+                'driver': os.getenv('BACK_DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
                 'unicode_results': True,
                 'extra_params': 'TrustServerCertificate=yes;Encrypt=no;charset=utf8',
-            } if os.getenv('DB_ENGINE') == 'mssql' else {},
+            } if BACK_DB_ENGINE == 'mssql' else {},
         }
     }
 
