@@ -27,6 +27,7 @@ class RemoteUser(models.Model):
     permissions = models.JSONField(null=True, blank=True)
     avatar = models.JSONField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
+    last_login = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
