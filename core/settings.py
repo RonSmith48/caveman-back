@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENV = os.getenv('ENV', 'dev') 
+ENV = os.getenv('ENV', 'dev')
 dotenv_path = BASE_DIR / f'.env.{ENV}'
 load_dotenv(dotenv_path)
 
@@ -117,7 +117,7 @@ if BACK_DB_ENGINE == 'sqlite':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / os.getenv('BACK_DB_NAME', 'db.sqlite3'),
+            'NAME': BASE_DIR / os.getenv('BACK_DB_NAME', 'backend.db'),
         }
     }
 else:
@@ -224,4 +224,3 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'webmaster@localhost')
-
