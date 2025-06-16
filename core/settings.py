@@ -32,8 +32,12 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
-AUTH_SERVER_URL = 'http://127.0.0.1:8000'
+AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL", "http://localhost:8000")
 AUTH_USER_MODEL = 'users.RemoteUser'
+
+AUTHENTICATION_BACKENDS = [
+    'users.auth_backends.RemoteAuthBackend',
+]
 
 # Application definition
 

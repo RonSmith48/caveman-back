@@ -2,12 +2,19 @@ from rest_framework import serializers
 from django.db.models import Sum
 from common.functions.constants import MANDATORY_RING_STATES
 import prod_actual.models as m
+import prod_concept.models as cm
+import prod_concept.api.serializers as cs
 
 
 class ProdRingSerializer(serializers.ModelSerializer):
+    concept_ring = serializers.SlugRelatedField(
+        queryset=cm.FlowModelConceptRing.objects.all(),
+        slug_field='blastsolids_id'
+    )
+
     class Meta:
         model = m.ProductionRing
-        exclude = ['concept_ring']
+        fields = '__all__'
 
     def create(self, validated_data):
         # Custom creation logic if needed

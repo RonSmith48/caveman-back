@@ -1,11 +1,23 @@
-import json
-import uuid
+from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
+from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
 # from django.utils.translation import gettext_lazy as _
 
 
-class RemoteUser(models.Model):
+class RemoteUserManager(BaseUserManager):
+    def create_user(self, *args, **kwargs):
+        raise NotImplementedError(
+            "Local user creation is disabled—accounts live only on the auth server."
+        )
+
+    def create_superuser(self, *args, **kwargs):
+        raise NotImplementedError(
+            "Superuser creation is disabled—accounts live only on the auth server."
+        )
+
+
+class RemoteUser(AbstractBaseUser, PermissionsMixin):
     """
     A local “mirror” of the CustomUser living on the auth server.
     We only keep the fields we display frequently, and track a last‐updated timestamp.
