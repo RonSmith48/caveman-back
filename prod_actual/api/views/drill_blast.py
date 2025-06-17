@@ -247,7 +247,8 @@ class ProdOrphans():
                     design_alias = str(orphan.level) + "_" + orphan.oredrive
                     matches += 1
                     orphan.concept_ring = closest_ring
-                    orphan.designed_tonnes = closest_ring.density * orphan.blastsolids_volume
+                    if orphan.designed_tonnes is None:
+                        orphan.designed_tonnes = closest_ring.density * orphan.blastsolids_volume
                     orphan.save()
                     closest_ring.alias = design_alias
                     closest_ring.save()

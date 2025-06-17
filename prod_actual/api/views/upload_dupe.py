@@ -128,7 +128,7 @@ class DupeFileHandler():
 
     def process_row(self, row):
 
-        level = self.number_fix(row["Level"])
+        level = int(self.number_fix(row["Level"]))
         oredrive = row["Drive"]
         ring_number_txt = row["Ring"]
         status = self.status_adapter(row["Status"])
@@ -198,7 +198,6 @@ class DupeFileHandler():
                 self.status_charged(ring, charge_shift)
                 self.status_fired(ring, shiftfired)
 
-                
             if tonnes > 0:
                 self.update_create_bog_tonnes(tonnes, ring)
 
@@ -209,7 +208,7 @@ class DupeFileHandler():
             self.logger.error(f"Row: {row}")
             self.logger.exception("Traceback:")
             self.error = str(e)
-    
+
     def status_drilled(self, ring, drill_shift, holes, drill_meters):
         m.RingStateChange.objects.create(
             prod_ring=ring,
@@ -219,7 +218,7 @@ class DupeFileHandler():
             mtrs_drilled=drill_meters,
             holes_completed=holes,
         )
-        
+
     def status_charged(self, ring, charge_shift):
         m.RingStateChange.objects.create(
             prod_ring=ring,
@@ -227,7 +226,7 @@ class DupeFileHandler():
             shkey=charge_shift,
             operation_complete=True,
         )
-        
+
     def status_fired(self, ring, shiftfired):
         m.RingStateChange.objects.create(
             prod_ring=ring,
