@@ -68,7 +68,7 @@ class ConceptRingsFileHandler():
         else:
 
             self.success_msg = f'{self.rings_created} Conceptual rings created, {
-                self.rings_updated} updated, {self.rings_orphaned} rings orphaned'
+                self.rings_updated} updated'
             return {'msg': self.success_msg, 'msg_type': 'success'}
 
     def read_flow_concept_file(self, file):
