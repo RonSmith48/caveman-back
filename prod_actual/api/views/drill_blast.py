@@ -40,8 +40,7 @@ class MatchProdConceptRingsView(APIView):
 
         if "status_code" in data:
             return Response({data["msg"]}, status=data["status_code"])
-        msg_body = f'{data["processed_count"]} rings processed, {
-            data["matched"]} matched'
+        msg_body = f'{data["processed_count"]} rings processed, {data["matched"]} matched'
         return Response({"msg": {"body": msg_body, "type": "success"}}, status=status.HTTP_200_OK)
 
 

@@ -67,8 +67,7 @@ class ConceptRingsFileHandler():
             return {'msg': self.error_msg, 'msg_type': 'error'}
         else:
 
-            self.success_msg = f'{self.rings_created} Conceptual rings created, {
-                self.rings_updated} updated'
+            self.success_msg = f'{self.rings_created} Conceptual rings created, {self.rings_updated} updated'
             return {'msg': self.success_msg, 'msg_type': 'success'}
 
     def read_flow_concept_file(self, file):
@@ -217,7 +216,7 @@ class ConceptRingsFileHandler():
                         )
                     else:
                         print(
-                            f'{b['id']}: Successor {succ_id} not in concept database.')
+                            f'{b["id"]}: Successor {succ_id} not in concept database.')
 
             # Create new links for predecessors
             if b['predecessors']:
@@ -233,4 +232,4 @@ class ConceptRingsFileHandler():
                         )
                     else:
                         print(
-                            f'{b['id']}: Predecessor {succ_id} not in concept database.')
+                            f'{b["id"]}: Predecessor {succ_id} not in concept database.')

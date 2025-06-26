@@ -23,8 +23,7 @@ class ConceptRingsFileHandler(object):
         if self.error_msg:
             return {'msg': {'type': 'error', 'body': self.error_msg}}
         else:
-            self.success_msg = f'{self.rings_created} conceptual rings created, {
-                self.rings_updated} updated'
+            self.success_msg = f'{self.rings_created} conceptual rings created, {self.rings_updated} updated'
 
             logger.user_activity("flow model update", extra={
                 'user': request.user,

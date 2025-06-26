@@ -18,9 +18,7 @@ from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENV = os.getenv('ENV', 'dev')
-dotenv_path = BASE_DIR / f'.env.{ENV}'
-load_dotenv(dotenv_path)
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -116,28 +114,30 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-BACK_DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite')
-if BACK_DB_ENGINE == 'sqlite':
+DB_ENGINE = os.getenv('DB_ENGINE', 'django.db.backends.sqlite3')
+
+if DB_ENGINE == 'django.db.backends.sqlite3':
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
+            'ENGINE': DB_ENGINE,
             'NAME': BASE_DIR / os.getenv('BACK_DB_NAME', 'backend.db'),
         }
     }
 else:
     DATABASES = {
         'default': {
-            'ENGINE': BACK_DB_ENGINE,
-            'NAME':     os.getenv('BACK_DB_NAME'),
-            'USER':     os.getenv('BACK_DB_USER'),
-            'PASSWORD': os.getenv('BACK_DB_PASSWORD'),
-            'HOST':     os.getenv('BACK_DB_HOST'),
-            'PORT':     os.getenv('BACK_DB_PORT'),
+            'ENGINE': DB_ENGINE,
+            'NAME': os.getenv('BACK_DB_NAME', 'caveman'),
+            'USER': os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT'),
+            # Only include OPTIONS if using MSSQL
             'OPTIONS': {
-                'driver': os.getenv('BACK_DB_DRIVER', 'ODBC Driver 17 for SQL Server'),
+                'driver': 'ODBC Driver 17 for SQL Server',
                 'unicode_results': True,
                 'extra_params': 'TrustServerCertificate=yes;Encrypt=no;charset=utf8',
-            } if BACK_DB_ENGINE == 'mssql' else {},
+            } if 'mssql' in DB_ENGINE else {}
         }
     }
 
@@ -176,8 +176,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'static'
+STATICFILES_DIRS = [
+    BASE_DIR / 'staticfiles',
+]
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'            # where uploaded files get saved
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field

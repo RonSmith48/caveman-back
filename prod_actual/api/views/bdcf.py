@@ -250,14 +250,11 @@ class BDCFRings():
                 ring_name = self.ring_number_namer(ring.ring_number_txt)
                 if ring.multi_fire_group:
                     if ring.multi_fire_group == '(MP)':
-                        ring_text = f"{ring.level}_{
-                            ring.oredrive} {ring_name}"
+                        ring_text = f"{ring.level}_{ring.oredrive} {ring_name}"
                     else:
-                        ring_text = f"{ring.level}_{
-                            ring.oredrive} {ring.multi_fire_group}"
+                        ring_text = f"{ring.level}_{ring.oredrive} {ring.multi_fire_group}"
                 else:
-                    ring_text = f"{ring.level}_{
-                        ring.oredrive} {ring_name}"
+                    ring_text = f"{ring.level}_{ring.oredrive} {ring_name}"
 
             # Append the formatted result with location_id
                 dropdown_options.append({
@@ -550,11 +547,11 @@ class BDCFRings():
                  'created_at': change.created_at,
                  'holes_completed': change.holes_completed,  # int
                  'user': {
-                    'name': change.user.get_full_name() if change.user else "System",
-                    'avatar': change.user.avatar if change.user else None,
-                    'initials': change.user.initials if change.user else "sys",
-                    'email': change.user.email if change.user else None
-                          }}
+                     'name': change.user.get_full_name() if change.user else "System",
+                     'avatar': change.user.avatar if change.user else None,
+                     'initials': change.user.initials if change.user else "sys",
+                     'email': change.user.email if change.user else None
+                 }}
             conditions.append(c)
         return conditions
 
@@ -672,8 +669,8 @@ class BDCFRings():
                 pri_state=status, sec_state=condition).first()
             if not ring_state:
                 return Response(
-                    {'msg': {'type': 'error', 'body': f"RingState with pri_state '{
-                        status}' and sec_state '{condition}' not found"}},
+                    {'msg': {
+                        'type': 'error', 'body': f"RingState with pri_state '{status}' and sec_state '{condition}' not found"}},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -1147,6 +1144,18 @@ class BDCFRings():
         groups = []
         mfg = m.MultifireGroup.objects.filter(is_active=True)
         for g in mfg:
+            if isinstance(g.group_rings, str):
+                try:
+                    gr = json.loads(g.group_rings)
+                    g.group_rings = gr
+                except json.JSONDecodeError as e:
+                    print("parsing failed", e)
+            if isinstance(g.pooled_rings, str):
+                try:
+                    pr = json.loads(g.pooled_rings)
+                    g.group_rings = pr
+                except json.JSONDecodeError as e:
+                    print("parsing failed", e)
 
             touched = True
             created_rings_info = self.get_created_rings_status(g.group_rings)
@@ -1177,7 +1186,8 @@ class BDCFRings():
         rings_list = []
 
         for r in group_rings:
-            ring = m.ProductionRing.objects.get(location_id=r['location_id'])
+            loc_id = int(r['location_id'])
+            ring = m.ProductionRing.objects.get(location_id=loc_id)
             ring_status = ring.status
             ring_oredrive = ring.oredrive
 

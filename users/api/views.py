@@ -273,7 +273,7 @@ class LoginView(TokenObtainPairView):
                 'user': data['user'].id,
                 'url': request.build_absolute_uri(),
                 'ip_address': request.META.get('REMOTE_ADDR'),
-                'description': f'{data['user'].get_full_name()} logged in',
+                'description': f'{data["user"].get_full_name()} logged in',
             })
             user_instance = data['user']
             serialized_user = s.UserSerializer(user_instance).data

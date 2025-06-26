@@ -151,8 +151,7 @@ class ScheduleFileHandler():
                 start_date = datetime.strptime(
                     start_date_raw, date_format_input).date() if start_date_raw else None
             except ValueError:
-                self.error_msg = f'Unreadable start date at line {
-                    rows_processed}'
+                self.error_msg = f'Unreadable start date at line {rows_processed}'
                 return
 
             try:
@@ -187,8 +186,7 @@ class ScheduleFileHandler():
                 concept_ring = m.FlowModelConceptRing.objects.get(
                     blastsolids_id=sched_item.blastsolids_id)
             except m.FlowModelConceptRing.DoesNotExist:
-                self.error_msg = f'Block with ID:{
-                    sched_item.blastsolids_id} is not in the database.'
+                self.error_msg = f'Block with ID:{sched_item.blastsolids_id} is not in the database.'
                 return
             drv_name = self.determine_mining_direction(concept_ring)
             if not drv_name:
@@ -237,7 +235,6 @@ class ScheduleFileHandler():
                     return drv_name
         return None
 
-
     def mining_dir_guess_method(self, concept_ring):
         # if there is an alias, try to use that first
         drv_name = concept_ring.alias
@@ -255,8 +252,7 @@ class ScheduleFileHandler():
             if direction:
                 self.mining_direction = direction.mining_direction
                 return drv_name
-        self.error_msg = f'There is no mining direction for oredrive {
-            drv_name}, fix it and try again.'
+        self.error_msg = f'There is no mining direction for oredrive {drv_name}, fix it and try again.'
         print(self.error_msg)
         return None
 
@@ -274,8 +270,7 @@ class ScheduleFileHandler():
             except m.FlowModelConceptRing.MultipleObjectsReturned:
                 concept_block = None
             if not concept_block:
-                self.error_msg = f'Unknown blastsolid: {
-                    sched_block.blastsolids_id}'
+                self.error_msg = f'Unknown blastsolid: {sched_block.blastsolids_id}'
                 print(self.error_msg)
                 return
 
@@ -302,7 +297,8 @@ class ScheduleFileHandler():
         charged = None
 
         if sched_item.bogging_block:
-            charged = baf.step_dist_using_successor_method(sched_item.bogging_block, self.min_precharge_amount)
+            charged = baf.step_dist_using_successor_method(
+                sched_item.bogging_block, self.min_precharge_amount)
 
         if sched_item.description:
             # might already be charged past calc pos
@@ -351,8 +347,9 @@ class ScheduleFileHandler():
                 scenario=self.scenario, description=oredrive).order_by('start_date')
             # set mining direction
             first_block = sched_by_drive.first().bogging_block
-            self.mining_direction = self.mining_dir_successor_method(first_block)
-            
+            self.mining_direction = self.mining_dir_successor_method(
+                first_block)
+
             current_drilled = self.get_current_last_block_of_status(
                 oredrive, 'Drilled')
 
@@ -410,19 +407,22 @@ class ScheduleFileHandler():
     def interfere_with_others(self, sched_item):
         # now for the fun stuff
         baf = BlockAdjacencyFunctions()
-        
+
         # get adjacent blocks not in same oredrive
         adjacent_blocks = (
             pcm.BlockAdjacency.objects
             .filter(block=sched_item.last_charge_block)  # Get adjacent blocks
-            .exclude(adjacent_block__description=sched_item.last_charge_block.description)  # Exclude current oredrive
+            # Exclude current oredrive
+            .exclude(adjacent_block__description=sched_item.last_charge_block.description)
         )
 
         # Get distinct oredrives with at least one block from each
         distinct_adjacent_blocks = (
             adjacent_blocks
-            .values('adjacent_block__description')  # Group by oredrive description
-            .annotate(block_id=Min('adjacent_block__location_id'))  # Pick the smallest ID as a representative
+            # Group by oredrive description
+            .values('adjacent_block__description')
+            # Pick the smallest ID as a representative
+            .annotate(block_id=Min('adjacent_block__location_id'))
         )
 
         # Get the actual block objects using the selected block IDs
@@ -431,7 +431,8 @@ class ScheduleFileHandler():
         )
 
         # If no adjacent blocks exist, return None
-        selected_blocks = list(selected_blocks) if selected_blocks.exists() else None
+        selected_blocks = list(
+            selected_blocks) if selected_blocks.exists() else None
 
         if selected_blocks is None:
             return None
@@ -546,8 +547,7 @@ class ScheduleFileHandler():
             if md:
                 self.mining_direction = md.mining_direction
             else:
-                self.error_msg = f'No mining direction found for {
-                    drive} (Drill sums)'
+                self.error_msg = f'No mining direction found for {drive} (Drill sums)'
                 print(self.error_msg)
                 continue
             self.last_designed_block = self.get_last_designed_block(drive)
@@ -571,7 +571,7 @@ class ScheduleFileHandler():
                             self.get_blocks_between(
                                 first_block, sched, count_first=True)
                             prev_schedule_block = sched.last_drill_block
-        print("finished")#================
+        print("finished")  # ================
 
     def get_blocks_between(self, start_block, sched_item, count_first=False):
         # if start of drive 'Start_block' is None.
@@ -590,9 +590,11 @@ class ScheduleFileHandler():
 
         is_correct_dir = baf.is_in_general_mining_direction(
             current_block, sched_item.last_drill_block, self.mining_direction)
-        dist = baf.get_dist_to_block(current_block, sched_item.last_drill_block)
+        dist = baf.get_dist_to_block(
+            current_block, sched_item.last_drill_block)
         if dist > 50:
-            print("Dist too great", current_block.description, sched_item.last_drill_block.description, dist)
+            print("Dist too great", current_block.description,
+                  sched_item.last_drill_block.description, dist)
             return
         if is_correct_dir:
             while current_block != sched_item.last_drill_block:
@@ -606,7 +608,7 @@ class ScheduleFileHandler():
                     self.tally(current_block)
                 else:
                     print("There was an unexpected end to blocks in drive",
-                        sched_item.description)
+                          sched_item.description)
                     return
 
         sched_item.sum_drill_rings_from_prev = self.ring_count
@@ -614,7 +616,8 @@ class ScheduleFileHandler():
         sched_item.save()
 
     def tally(self, current_block):
-        rings_in_block = pam.ProductionRing.objects.filter(is_active=True, concept_ring=current_block)
+        rings_in_block = pam.ProductionRing.objects.filter(
+            is_active=True, concept_ring=current_block)
         if rings_in_block:
             for ring in rings_in_block:
                 self.ring_count += 1
@@ -702,20 +705,22 @@ class ScheduleFileHandler():
                         row.extend([0, 0])  # Fill with zeros if no data
                 writer.writerow(row)
 
-            queryset = m.SchedSim.objects.filter(scenario=self.scenario ,start_date__isnull=False)
+            queryset = m.SchedSim.objects.filter(
+                scenario=self.scenario, start_date__isnull=False)
 
         data = queryset.values('description', 'start_date__year', 'start_date__month') \
-                    .annotate(
-                        total_rings=Sum('sum_drill_rings_from_prev'),
-                        total_mtrs=Sum('sum_drill_mtrs_from_prev')
-                    ) \
-                    .order_by('description', 'start_date__year', 'start_date__month')
+            .annotate(
+            total_rings=Sum('sum_drill_rings_from_prev'),
+            total_mtrs=Sum('sum_drill_mtrs_from_prev')
+        ) \
+            .order_by('description', 'start_date__year', 'start_date__month')
 
         # Organize data by description and months
         descriptions = {}
         for entry in data:
             desc = entry['description']
-            month = datetime(entry['start_date__year'], entry['start_date__month'], 1).strftime('%b %Y')
+            month = datetime(entry['start_date__year'],
+                             entry['start_date__month'], 1).strftime('%b %Y')
             if desc not in descriptions:
                 descriptions[desc] = {}
             descriptions[desc][month] = {
@@ -725,17 +730,20 @@ class ScheduleFileHandler():
 
         # Get all unique months across data and sort them chronologically
         months = sorted(
-            {datetime.strptime(m, '%b %Y') for desc_data in descriptions.values() for m in desc_data.keys()}
+            {datetime.strptime(m, '%b %Y') for desc_data in descriptions.values()
+             for m in desc_data.keys()}
         )
         months = [month.strftime('%b %Y') for month in months]
 
         # Write to CSV
         with open(self.filename, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
-            
+
             # Header rows
-            writer.writerow(['Description'] + [month for month in months for _ in range(2)])
-            writer.writerow([''] + [col for month in months for col in ('Rings', 'Meters')])
+            writer.writerow(['Description'] +
+                            [month for month in months for _ in range(2)])
+            writer.writerow(
+                [''] + [col for month in months for col in ('Rings', 'Meters')])
 
             # Data rows
             for desc, month_data in descriptions.items():
@@ -746,7 +754,7 @@ class ScheduleFileHandler():
                         row.append(month_data[month]['mtrs'])
                     else:
                         row.extend([0, 0])  # Fill with zeros if no data
-                writer.writerow(row) 
+                writer.writerow(row)
 
     # ================ TESTING ====================
 

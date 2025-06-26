@@ -1,34 +1,26 @@
-# Base image
-FROM python:3.12-slim
+# Use official Python base image
+FROM python:3.11-slim
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    nano \
-    gnupg2 \
-    apt-transport-https \
-    unixodbc \
-    unixodbc-dev \
-    gcc \
-    g++ \
-    libffi-dev \
-    build-essential \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
-    && curl https://packages.microsoft.com/config/debian/10/prod.list > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
-    && apt-get clean
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Set work directory
 WORKDIR /app
 
-# Install pipenv or requirements
+# Install OS dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       libpq-dev \
+       curl \
+       nano \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
 COPY . .
@@ -36,5 +28,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Default command
+# Use Gunicorn to run the app
 CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000"]
