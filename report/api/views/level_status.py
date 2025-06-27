@@ -284,7 +284,6 @@ class LevelStatusReport():
         # charge_shift is a shkey
         if not ring.charge_shift:
             return False
-        print(f"Checking overslept for ring: {ring.ring_number_txt} with charge_shift: {ring.charge_shift}")
         charge_date = date.fromisoformat(ring.charge_shift)
         overslept_date = charge_date + timedelta(days=self.sleep_days)
 

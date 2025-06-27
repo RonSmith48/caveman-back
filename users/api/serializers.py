@@ -78,7 +78,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = m.RemoteUser
-        exclude = ['password', 'otp']  # Exclude sensitive fields
+        exclude = ['password']  # Exclude sensitive fields
 
     def get_full_name(self, obj):
         return obj.get_full_name()

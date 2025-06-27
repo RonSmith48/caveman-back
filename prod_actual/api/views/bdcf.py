@@ -1146,14 +1146,12 @@ class BDCFRings():
         for g in mfg:
             if isinstance(g.group_rings, str):
                 try:
-                    gr = json.loads(g.group_rings)
-                    g.group_rings = gr
+                    g.group_rings = json.loads(g.group_rings)
                 except json.JSONDecodeError as e:
                     print("parsing failed", e)
             if isinstance(g.pooled_rings, str):
                 try:
-                    pr = json.loads(g.pooled_rings)
-                    g.group_rings = pr
+                    g.pooled_rings = json.loads(g.pooled_rings)
                 except json.JSONDecodeError as e:
                     print("parsing failed", e)
 
