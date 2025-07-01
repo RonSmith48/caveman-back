@@ -30,7 +30,7 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
-AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL", "http://localhost:8000")
+AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL", "http://localhost:8010")
 AUTH_USER_MODEL = 'users.RemoteUser'
 
 AUTHENTICATION_BACKENDS = [
@@ -228,7 +228,7 @@ CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'False') == 'True'
 
 EMAIL_BACKEND = os.getenv(
     'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '10.0.0.133')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 1025))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
