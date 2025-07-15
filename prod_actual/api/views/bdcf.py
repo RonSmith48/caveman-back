@@ -611,6 +611,8 @@ class BDCFRings():
         For empty conditions list, pri_state = status, sec_state = None.
         '''
         sk = Shkey()
+        cas = ConditionsAndStates()
+        cas.ensure_mandatory_ring_states()
 
         data = request.data
         d = data.get('date')
