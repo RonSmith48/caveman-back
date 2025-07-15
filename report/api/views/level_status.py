@@ -197,7 +197,7 @@ class LevelStatusReport():
                 is_active=True, prod_ring=ring, state__pri_state='Drilled', state__sec_state='Blocked Holes')
             for p in prob:
                 drilled['problem_rings'].append(
-                    {'ring_number_txt': ring.ring_number_txt, 'condition': 'Blocked Holes'})
+                    {'ring_number_txt': ring.ring_number_txt, 'condition': 'Blocked Holes', 'location_id': ring.location_id})
 
         return drilled
 
@@ -206,7 +206,7 @@ class LevelStatusReport():
         for ring in rings:
             osr_state = self.is_overslept_ring(ring)
             charged.append({'ring': ring.ring_number_txt, 'detonator': ring.detonator_actual,
-                           'fireby_date': ring.fireby_date, 'is_overslept': osr_state})
+                           'fireby_date': ring.fireby_date, 'is_overslept': osr_state, 'location_id': ring.location_id})
 
         return charged
 
@@ -246,6 +246,7 @@ class LevelStatusReport():
         else:
             bogging['ring_txt'] = primary_ring.ring_number_txt
 
+        bogging['location_id'] = primary_ring.location_id
         bogging['bogged_tonnes'] = self.get_bogged_tonnes(primary_ring)
         bogging['overdraw_zone'] = primary_ring.in_overdraw_zone
         bogging['overdraw_tonnes'] = cm.no_null(primary_ring.overdraw_amount)
