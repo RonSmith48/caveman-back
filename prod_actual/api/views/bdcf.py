@@ -281,7 +281,7 @@ class BDCFRings():
             stats['draw_deviation'] = prod_ring.draw_deviation
             stats['in_flow'] = prod_ring.in_flow
             stats['comment'] = prod_ring.comment
-            summed = (prod_ring.designed_tonnes * prod_ring.draw_percentage) + \
+            summed = (prod_ring.designed_tonnes * prod_ring.draw_percentage/100) + \
                 prod_ring.draw_deviation + prod_ring.overdraw_amount
             if prod_ring.concept_ring:
                 stats['flow_tonnes'] = prod_ring.concept_ring.pgca_modelled_tonnes
@@ -834,9 +834,9 @@ class BDCFRings():
                     # we are expecting a certain volume of material to be bogged
                     # from flow rings
                     aggregated['designed_tonnes'] += (
-                        tonnes * ring['draw_percentage'])
+                        tonnes * ring['draw_percentage']/100)
                     aggregated['volume'] += ((tonnes *
-                                             ring['draw_percentage']) / ring['density'])
+                                             ring['draw_percentage']/100) / ring['density'])
                 else:
                     aggregated['designed_tonnes'] += tonnes
                     aggregated['volume'] += volume

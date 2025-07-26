@@ -253,7 +253,8 @@ class LevelStatusReport():
         bogging['in_flow'] = primary_ring.in_flow
         bogging['comment'] = (str(bogging.get(
             'comment', '') or '') + ' ' + str(primary_ring.comment or '')).strip()
-        bogging['draw_ratio'] = primary_ring.draw_percentage
+        bogging['draw_ratio'] = primary_ring.draw_percentage / \
+            100.0  # Convert to ratio
         bogging['draw_deviation'] = cm.no_null(primary_ring.draw_deviation)
         bogging['conditions'] = self.get_ring_conditions(primary_ring)
 
