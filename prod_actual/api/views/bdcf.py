@@ -148,7 +148,9 @@ class FireEntryView(APIView):
 
     def post(self, request, *args, **kwargs):
         bdcf = BDCFRings()
+        location_id = request.data['location_id']
         rings = bdcf.fire_ring(request)
+        bdcf.auto_remove_ring_conditions('Charged', location_id, request.user)
         return Response(rings, status=status.HTTP_200_OK)
 
 
@@ -232,6 +234,7 @@ class BDCFRings():
     def __init__(self) -> None:
         self.error_msg = None
         self.msg = None
+        self.auto_remove = ['Incomplete', 'Blocked Holes']
 
     def ring_number_namer(self, ring_num_txt):
         if ring_num_txt and ring_num_txt[0].isdigit():
@@ -398,6 +401,8 @@ class BDCFRings():
             ring.save()
 
             self.create_ring_conditions(request, conditions)
+            self.auto_remove_ring_conditions(
+                'Drilled', location_id, request.user)
 
             return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
 
@@ -1424,3 +1429,26 @@ class BDCFRings():
             # Handle unexpected errors
             print("error", str(e))
             return {'msg': {'type': 'error', 'body': f'error: {str(e)}'}}
+
+    def auto_remove_ring_conditions(self, status, location_id, user):
+        """
+        Automatically removes conditions that are not applicable when state is changed.
+        """
+        # Get the production ring
+        try:
+            prod_ring = m.ProductionRing.objects.get(location_id=location_id)
+        except m.ProductionRing.DoesNotExist:
+            return Response(
+                {'msg': {'type': 'error', 'body': 'Production ring not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get the RingState for the given status
+        ring_states = m.RingStateChange.objects.filter(
+            is_active=True, prod_ring=prod_ring, state__pri_state=status)
+        if not ring_states:
+            return
+        for ring_state in ring_states:
+            if ring_state.state.sec_state in self.auto_remove:
+                ring_state.update(
+                    is_active=False, deactivated_by=user, operation_complete=True)
