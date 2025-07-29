@@ -1430,11 +1430,11 @@ class BDCFRings():
             print("error", str(e))
             return {'msg': {'type': 'error', 'body': f'error: {str(e)}'}}
 
-    def auto_remove_ring_conditions(self, status, location_id, user):
+    def auto_remove_ring_conditions(self, pri_state, location_id, user):
         """
-        Automatically removes conditions that are not applicable when state is changed.
+        Automatically deactivate RingStateChange records that should
+        be cleared when a ring’s primary state changes.
         """
-        # Get the production ring
         try:
             prod_ring = m.ProductionRing.objects.get(location_id=location_id)
         except m.ProductionRing.DoesNotExist:
@@ -1443,12 +1443,20 @@ class BDCFRings():
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Get the RingState for the given status
-        ring_states = m.RingStateChange.objects.filter(
-            is_active=True, prod_ring=prod_ring, state__pri_state=status)
-        if not ring_states:
-            return
-        for ring_state in ring_states:
-            if ring_state.state.sec_state in self.auto_remove:
-                ring_state.update(
-                    is_active=False, deactivated_by=user, operation_complete=True)
+        removable_qs = (
+            m.RingStateChange.objects
+            .filter(
+                is_active=True,
+                prod_ring=prod_ring,
+                state__pri_state=pri_state,
+                state__sec_state__in=self.auto_remove
+            )
+        )
+
+        updated_rows = removable_qs.update(
+            is_active=False,
+            deactivated_by=user,
+            operation_complete=True
+        )
+
+        return updated_rows
