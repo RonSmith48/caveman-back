@@ -399,10 +399,9 @@ class BDCFRings():
 
             # Save the updated model instance
             ring.save()
-
-            self.create_ring_conditions(request, conditions)
             self.auto_remove_ring_conditions(
                 'Drilled', location_id, request.user)
+            self.create_ring_conditions(request, conditions)
 
             return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
 
