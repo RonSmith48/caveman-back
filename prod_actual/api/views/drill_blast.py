@@ -104,6 +104,8 @@ class RingDesignService:
             decoded_file = ring_file.read().decode('utf-8')
             reader = csv.DictReader(io.StringIO(decoded_file))
 
+            CREATE_ONLY = {'prod_dev_code', 'is_active', 'status'}
+
             for row in reader:
                 config_raw = row.get('Configuration', '').strip()
                 if len(config_raw) < 5 or '_' not in config_raw:
@@ -124,34 +126,48 @@ class RingDesignService:
                 if not alias or alias == '_':
                     continue
 
-                draw_pct = self._int(row.get('draw'))
+                draw_pct = row.get('draw')
+
+                new_values = {
+                    'prod_dev_code': 'p',
+                    'is_active': True,
+                    'level': level,
+                    'status': 'Designed',
+                    'x': self._decimal(row.get('AVG_BROW_X')),
+                    'y': self._decimal(row.get('AVG_BROW_Y')),
+                    'z': self._decimal(row.get('AVG_BROW_Z')),
+                    'oredrive': oredrive,
+                    'ring_number_txt': ring_number,
+                    'dump': self._decimal(row.get('Dump')),
+                    'azimuth': self._decimal(row.get('Azimuth')),
+                    'burden': row.get('BurdenValue'),
+                    'holes': self._int(row.get('Holes')),
+                    'diameters': row.get('Diameters'),
+                    'drill_meters': self._decimal(row.get('Total Drill')),
+                    'drill_look_direction': row.get('LookDirection'),
+                    'designed_to_suit': row.get('Rig'),
+                    'blastsolids_volume': self._decimal(row.get('BlastSolidsVolume')),
+                    'draw_percentage': draw_pct,
+                    'in_flow': draw_pct == -1,
+                    'design_date': date.today().isoformat()
+                }
 
                 obj, created = m.ProductionRing.objects.update_or_create(
-                    alias=alias,
-                    defaults={
-                        'prod_dev_code': 'p',
-                        'is_active': True,
-                        'level': level,
-                        'status': 'Designed',
-                        'x': self._decimal(row.get('AVG_BROW_X')),
-                        'y': self._decimal(row.get('AVG_BROW_Y')),
-                        'z': self._decimal(row.get('AVG_BROW_Z')),
-                        'oredrive': oredrive,
-                        'ring_number_txt': ring_number,
-                        'dump': self._decimal(row.get('Dump')),
-                        'azimuth': self._decimal(row.get('Azimuth')),
-                        'burden': row.get('BurdenValue'),
-                        'holes': self._int(row.get('Holes')),
-                        'diameters': row.get('Diameters'),
-                        'drill_meters': self._decimal(row.get('Total Drill')),
-                        'drill_look_direction': row.get('LookDirection'),
-                        'designed_to_suit': row.get('Rig'),
-                        'blastsolids_volume': self._decimal(row.get('BlastSolidsVolume')),
-                        'draw_percentage': draw_pct,
-                        'in_flow': draw_pct == 100,
-                        'design_date': date.today().isoformat()
-                    }
-                )
+                    alias=alias)
+
+                if created:
+                    # brand‑new ring: set everything
+                    for attr, val in new_values.items():
+                        setattr(obj, attr, val)
+
+                else:
+                    # existing ring: only fill blanks *and* skip CREATE_ONLY fields
+                    for attr, val in new_values.items():
+                        if attr in CREATE_ONLY:
+                            continue
+                        setattr(obj, attr, val)
+
+                obj.save()
 
                 self.ring_map[alias] = obj
                 logger.info(
@@ -246,8 +262,7 @@ class ProdOrphans():
                     design_alias = str(orphan.level) + "_" + orphan.oredrive
                     matches += 1
                     orphan.concept_ring = closest_ring
-                    if orphan.designed_tonnes is None:
-                        orphan.designed_tonnes = closest_ring.density * orphan.blastsolids_volume
+                    orphan.designed_tonnes = closest_ring.density * orphan.blastsolids_volume
                     orphan.save()
                     closest_ring.alias = design_alias
                     closest_ring.save()

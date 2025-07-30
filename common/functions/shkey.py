@@ -95,7 +95,7 @@ class Shkey(object):
         day = shkey[6:8]
         final_digit = shkey[9]
 
-        formatted_date = f"{year}-{month}-{day} "
+        formatted_date = f"{day}/{month}/{year} "
 
         if final_digit == "2":
             formatted_date += "NS"

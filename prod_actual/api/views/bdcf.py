@@ -148,7 +148,9 @@ class FireEntryView(APIView):
 
     def post(self, request, *args, **kwargs):
         bdcf = BDCFRings()
+        location_id = request.data['location_id']
         rings = bdcf.fire_ring(request)
+        bdcf.auto_remove_ring_conditions('Charged', location_id, request.user)
         return Response(rings, status=status.HTTP_200_OK)
 
 
@@ -232,6 +234,7 @@ class BDCFRings():
     def __init__(self) -> None:
         self.error_msg = None
         self.msg = None
+        self.auto_remove = ['Incomplete', 'Blocked Holes']
 
     def ring_number_namer(self, ring_num_txt):
         if ring_num_txt and ring_num_txt[0].isdigit():
@@ -281,7 +284,7 @@ class BDCFRings():
             stats['draw_deviation'] = prod_ring.draw_deviation
             stats['in_flow'] = prod_ring.in_flow
             stats['comment'] = prod_ring.comment
-            summed = (prod_ring.designed_tonnes * prod_ring.draw_percentage) + \
+            summed = (prod_ring.designed_tonnes * prod_ring.draw_percentage/100) + \
                 prod_ring.draw_deviation + prod_ring.overdraw_amount
             if prod_ring.concept_ring:
                 stats['flow_tonnes'] = prod_ring.concept_ring.pgca_modelled_tonnes
@@ -396,7 +399,8 @@ class BDCFRings():
 
             # Save the updated model instance
             ring.save()
-
+            self.auto_remove_ring_conditions(
+                'Drilled', location_id, request.user)
             self.create_ring_conditions(request, conditions)
 
             return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
@@ -834,9 +838,9 @@ class BDCFRings():
                     # we are expecting a certain volume of material to be bogged
                     # from flow rings
                     aggregated['designed_tonnes'] += (
-                        tonnes * ring['draw_percentage'])
+                        tonnes * ring['draw_percentage']/100)
                     aggregated['volume'] += ((tonnes *
-                                             ring['draw_percentage']) / ring['density'])
+                                             ring['draw_percentage']/100) / ring['density'])
                 else:
                     aggregated['designed_tonnes'] += tonnes
                     aggregated['volume'] += volume
@@ -1424,3 +1428,34 @@ class BDCFRings():
             # Handle unexpected errors
             print("error", str(e))
             return {'msg': {'type': 'error', 'body': f'error: {str(e)}'}}
+
+    def auto_remove_ring_conditions(self, pri_state, location_id, user):
+        """
+        Automatically deactivate RingStateChange records that should
+        be cleared when a ring’s primary state changes.
+        """
+        try:
+            prod_ring = m.ProductionRing.objects.get(location_id=location_id)
+        except m.ProductionRing.DoesNotExist:
+            return Response(
+                {'msg': {'type': 'error', 'body': 'Production ring not found'}},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        removable_qs = (
+            m.RingStateChange.objects
+            .filter(
+                is_active=True,
+                prod_ring=prod_ring,
+                state__pri_state=pri_state,
+                state__sec_state__in=self.auto_remove
+            )
+        )
+
+        updated_rows = removable_qs.update(
+            is_active=False,
+            deactivated_by=user,
+            operation_complete=True
+        )
+
+        return updated_rows

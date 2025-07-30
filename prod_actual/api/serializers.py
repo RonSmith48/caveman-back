@@ -15,14 +15,31 @@ class ProdRingSerializer(serializers.ModelSerializer):
     class Meta:
         model = m.ProductionRing
         fields = '__all__'
+        """ extra_kwargs = {
+            # prevent client from writing this directly
+            'designed_tonnes': {'read_only': True},
+        } """
 
     def create(self, validated_data):
-        # Custom creation logic if needed
-        return super().create(validated_data)
+        # Let DRF build the instance first
+        instance = super().create(validated_data)
+        self._recalculate_designed_tonnes(instance)
+        return instance
 
     def update(self, instance, validated_data):
-        # Custom update logic if needed
-        return super().update(instance, validated_data)
+        # Apply incoming changes (including concept_ring or blastsolids_volume)
+        instance = super().update(instance, validated_data)
+        # Only recalc if either field changed
+        if 'concept_ring' in validated_data or 'blastsolids_volume' in validated_data:
+            self._recalculate_designed_tonnes(instance)
+        return instance
+
+    def _recalculate_designed_tonnes(self, instance):
+        density = getattr(instance.concept_ring, 'density', 0) or 0
+        volume = instance.blastsolids_volume or 0
+        instance.designed_tonnes = density * volume
+        # only update that one column
+        instance.save(update_fields=['designed_tonnes'])
 
 
 class RingStateChangeSerializer(serializers.ModelSerializer):
@@ -87,7 +104,7 @@ class OverdrawRingSerializer(serializers.ModelSerializer):
         model = m.ProductionRing
         fields = (
             'location_id', 'level', 'oredrive', 'ring_number_txt', 'designed_tonnes',
-            'bogged_tonnes', 'overdraw_amount', 'overdraw_total', 'draw_notes'
+            'bogged_tonnes', 'overdraw_amount', 'overdraw_total', 'draw_notes', 'draw_percentage', 'draw_deviation'
         )
 
     def get_overdraw_total(self, obj):

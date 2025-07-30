@@ -29,7 +29,7 @@ class BogVerifyReportView(APIView):
 
 class DataDupeView(APIView):
     def get(self, request, *args, **kwargs):
-        rings = pm.ProductionRing.objects.filter(is_active=True)
+        rings = ProdReporting().get_dupe_rings()
         serializer = s.DataDupeSerializer(rings, many=True)
         return Response(serializer.data)
 
@@ -109,3 +109,20 @@ class ProdReporting():
             'results': results,
             'total': total
         }
+
+    def get_active_levels(self):
+        """
+        Returns a list of active levels.
+        """
+
+        return pm.ProductionRing.objects.filter(
+            is_active=True,
+            status='Bogging'
+        ).values_list('level', flat=True).distinct()
+
+    def get_dupe_rings(self):
+        levels = self.get_active_levels()
+        return pm.ProductionRing.objects.filter(
+            is_active=True,
+            level__in=levels
+        )

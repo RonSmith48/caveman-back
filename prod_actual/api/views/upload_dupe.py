@@ -169,7 +169,7 @@ class DupeFileHandler():
                     "is_active": is_active,
                     "holes": holes,
                     "drill_meters": drill_meters,
-                    "draw_percentage": draw_ratio,
+                    "draw_percentage": draw_ratio * 100,  # Convert to percentage
                     "in_flow": in_flow,
                     "designed_tonnes": designed_tonnes,
                     "drill_complete_shift": drill_shift,
