@@ -47,6 +47,7 @@ class ConceptRingsFileHandler():
         self.rings_updated = 0
         self.rings_orphaned = 0
         self.error_msg = None
+        self.warning_msg = None
         self.success_msg = None
         self.user = ''
         self.touched_levels = set()
@@ -65,6 +66,8 @@ class ConceptRingsFileHandler():
 
         if self.error_msg:
             return {'msg': self.error_msg, 'msg_type': 'error'}
+        elif self.warning_msg:
+            return {'msg': self.warning_msg, 'msg_type': 'warning'}
         else:
 
             self.success_msg = f'{self.rings_created} Conceptual rings created, {self.rings_updated} updated'
@@ -98,9 +101,13 @@ class ConceptRingsFileHandler():
         df2 = df.fillna("")
 
         for _, row in df2.iterrows():
+            bs_id = row[required_columns["id"]]
+            if not bs_id:
+                # Skip empty row
+                continue
             try:
                 drv_num = int(row[required_columns["drive"]])
-                bs_id = row[required_columns["id"]]
+                
                 level = self.number_fix(row[required_columns["level"]])
                 self.touched_levels.add(level)
 
@@ -138,6 +145,7 @@ class ConceptRingsFileHandler():
 
             except ValueError as ve:
                 self.logger.warning(f"Skipping row due to ValueError: {ve}")
+                self.warning_msg = f"Rows were skipped due to: {ve}"
             except Exception as e:
                 self.logger.error(f"Error: {e}")
                 self.error_msg = str(e)
