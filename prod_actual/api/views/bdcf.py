@@ -375,6 +375,7 @@ class BDCFRings():
 
     def charge_drilled_ring(self, request):
         sk = Shkey()
+        default_sleep_days = 28
 
         data = request.data
         location_id = data.get('location_id')
@@ -385,6 +386,7 @@ class BDCFRings():
             ring = m.ProductionRing.objects.get(location_id=location_id)
             d = data.get('date')
             shift = data.get('shift')
+            fireby_date = d + timedelta(days=default_sleep_days)
 
             shkey = data.get('shkey')  # From update
             if not shkey:  # New entry
@@ -394,6 +396,7 @@ class BDCFRings():
             ring.status = data.get('status', ring.status)
             ring.detonator_actual = data.get(
                 'explosive', ring.detonator_actual)
+            ring.fireby_date = fireby_date
 
             conditions = data.get('conditions', [])
 
