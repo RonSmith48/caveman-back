@@ -91,6 +91,7 @@ class RingDesignService:
 
     def __init__(self):
         self.ring_map = {}
+        self.draw_correction = 0.08  # Hardcoded multiplier for draw correction
 
     def upload_design(self, ring_file, hole_file):
         if not ring_file or not hole_file:
@@ -127,6 +128,10 @@ class RingDesignService:
                     continue
 
                 draw_pct = row.get('draw')
+                is_flow = draw_pct == -1
+                if is_flow:
+                    draw_pct = 100
+                draw = (draw_pct * self.draw_correction) + draw_pct
 
                 new_values = {
                     'prod_dev_code': 'p',
@@ -147,8 +152,8 @@ class RingDesignService:
                     'drill_look_direction': row.get('LookDirection'),
                     'designed_to_suit': row.get('Rig'),
                     'blastsolids_volume': self._decimal(row.get('BlastSolidsVolume')),
-                    'draw_percentage': draw_pct,
-                    'in_flow': draw_pct == -1,
+                    'draw_percentage': draw,
+                    'in_flow': is_flow,
                     'design_date': date.today().isoformat()
                 }
 
