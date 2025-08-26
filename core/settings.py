@@ -141,6 +141,34 @@ else:
         }
     }
 
+PITRAM_DB_ENGINE = os.getenv('PITRAM_DB_ENGINE', 'django.db.backends.sqlite3')
+PITRAM_DB_NAME = os.getenv('PITRAM_DB_NAME', BASE_DIR / 'external_copy.db')
+PITRAM_DB_USER = os.getenv('PITRAM_DB_USER', '')
+PITRAM_DB_PASSWORD = os.getenv('PITRAM_DB_PASSWORD', '')
+PITRAM_DB_HOST = os.getenv('PITRAM_DB_HOST', '')
+PITRAM_DB_PORT = os.getenv('PITRAM_DB_PORT', '')
+
+if PITRAM_DB_ENGINE == 'django.db.backends.sqlite3':
+    DATABASES['readonly'] = {
+        'ENGINE': PITRAM_DB_ENGINE,
+        'NAME': PITRAM_DB_NAME,
+    }
+else:
+    # assume MS-SQL in production
+    DATABASES['readonly'] = {
+        # e.g. 'mssql' or 'sql_server.pyodbc' if using mssql-django
+        'ENGINE': PITRAM_DB_ENGINE,
+        'NAME': PITRAM_DB_NAME,
+        'USER': PITRAM_DB_USER,
+        'PASSWORD': PITRAM_DB_PASSWORD,
+        'HOST': PITRAM_DB_HOST,
+        'PORT': PITRAM_DB_PORT,
+        'OPTIONS': {
+            'driver': 'ODBC Driver 17 for SQL Server',
+            'unicode_results': True,
+            'extra_params': 'TrustServerCertificate=yes;Encrypt=no;charset=utf8',
+        },
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
