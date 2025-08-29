@@ -15,7 +15,7 @@ from prod_actual.api.views.ring_state import ConditionsAndStates
 from prod_actual.api.views.drill_blast import ProdOrphans
 from common.functions.status import Status
 
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime
 
 import prod_actual.models as m
 import prod_actual.api.serializers as s
@@ -234,7 +234,24 @@ class BDCFRings():
     def __init__(self) -> None:
         self.error_msg = None
         self.msg = None
-        self.auto_remove = ['Incomplete', 'Blocked Holes']
+        self.auto_remove = {
+            "Drilled": {"Incomplete", "Blocked Holes"},
+            "Charged": {"Incomplete"},
+        }
+        self.DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%Y%m%d")
+
+    def _parse_date(self, value):
+        if isinstance(value, date):
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, str):
+            for fmt in self.DATE_FORMATS:
+                try:
+                    return datetime.strptime(value, fmt).date()
+                except ValueError:
+                    pass
+        raise ValueError("Invalid date. Expected YYYY-MM-DD, DD/MM/YYYY, or YYYYMMDD.")
 
     def ring_number_namer(self, ring_num_txt):
         if ring_num_txt and ring_num_txt[0].isdigit():
@@ -380,40 +397,50 @@ class BDCFRings():
         data = request.data
         location_id = data.get('location_id')
         if not location_id:
-            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'msg': {'type': 'error', 'body': 'location_id is required'}},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         try:
             ring = m.ProductionRing.objects.get(location_id=location_id)
-            d = data.get('date')
-            shift = data.get('shift')
-            fireby_date = d + timedelta(days=default_sleep_days)
 
-            shkey = data.get('shkey')  # From update
-            if not shkey:  # New entry
+            # Parse inputs
+            d = self._parse_date(data.get('date'))                      # '2025-08-29' -> date(2025,8,29)
+            shift = data.get('shift')
+            fireby_date = d + timedelta(days=default_sleep_days)   # date + 28 days
+            # Shkey
+            shkey = data.get('shkey')
+            if not shkey:
                 shkey = sk.generate_shkey(d, shift)
 
+            # Update fields
             ring.charge_shift = shkey
             ring.status = data.get('status', ring.status)
-            ring.detonator_actual = data.get(
-                'explosive', ring.detonator_actual)
+            ring.detonator_actual = data.get('explosive', ring.detonator_actual)
             ring.fireby_date = fireby_date
 
-            conditions = data.get('conditions', [])
+            # Conditions is already a list in your payload; keep a guard anyway
+            conditions = data.get('conditions') or []
+            if not isinstance(conditions, list):
+                return Response({'msg': {'type': 'error', 'body': "'conditions' must be a list."}},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-            # Save the updated model instance
             ring.save()
-            self.auto_remove_ring_conditions(
-                'Drilled', location_id, request.user)
+
+            # Use incoming status when cleaning up
+            self.auto_remove_ring_conditions('Drilled', location_id, request.user)
             self.create_ring_conditions(request, conditions)
 
-            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}}, status=status.HTTP_200_OK)
+            return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}},
+                            status=status.HTTP_200_OK)
 
         except m.ProductionRing.DoesNotExist:
-            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}}, status=status.HTTP_404_NOT_FOUND)
-
+            return Response({'msg': {'type': 'error', 'body': 'Production ring not found'}},
+                            status=status.HTTP_404_NOT_FOUND)
+        except ValueError as ve:
+            return Response({'msg': {'type': 'error', 'body': str(ve)}},
+                            status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            # Handle unexpected errors
-            print("error", str(e))
+            print("charge_drilled_ring error:", repr(e))
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def update_charged_ring(self, request):
@@ -1433,10 +1460,6 @@ class BDCFRings():
             return {'msg': {'type': 'error', 'body': f'error: {str(e)}'}}
 
     def auto_remove_ring_conditions(self, pri_state, location_id, user):
-        """
-        Automatically deactivate RingStateChange records that should
-        be cleared when a ring’s primary state changes.
-        """
         try:
             prod_ring = m.ProductionRing.objects.get(location_id=location_id)
         except m.ProductionRing.DoesNotExist:
@@ -1445,20 +1468,14 @@ class BDCFRings():
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        removable_qs = (
-            m.RingStateChange.objects
-            .filter(
-                is_active=True,
-                prod_ring=prod_ring,
-                state__pri_state=pri_state,
-                state__sec_state__in=self.auto_remove
-            )
-        )
+        sec_states = self.auto_remove.get(pri_state, ())
+        if not sec_states:
+            return 0
 
-        updated_rows = removable_qs.update(
-            is_active=False,
-            deactivated_by=user,
-            operation_complete=True
+        qs = m.RingStateChange.objects.filter(
+            is_active=True,
+            prod_ring=prod_ring,
+            state__pri_state=pri_state,
+            state__sec_state__in=list(sec_states)
         )
-
-        return updated_rows
+        return qs.update(is_active=False, deactivated_by=user, operation_complete=True)
