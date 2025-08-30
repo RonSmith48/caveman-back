@@ -138,13 +138,17 @@ class LevelStatusReport():
                 # If not, initialize a new object for the level
                 level_data[level] = {
                     'level': level,
-                    'ore_drives': []
+                    'ore_drives': [],
+                    'broken_stock': 0
                 }
                 report_data.append(level_data[level])
 
             # Append the oredrive status to the 'ore_drives' array
-            level_data[level]['ore_drives'].append(
-                self.oredrive_status(level, oredrive))
+            drive = self.oredrive_status(level, oredrive)
+            level_data[level]['ore_drives'].append(drive)
+
+            if drive['bogging']['avail_tonnes'] > 0:
+                level_data[level]['broken_stock'] += abs(drive['bogging']['avail_tonnes'])
 
         # Step 3: Convert the structured data to JSON
         report_json = json.dumps(report_data, cls=DjangoJSONEncoder, indent=4)
