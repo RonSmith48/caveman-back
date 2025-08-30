@@ -4,6 +4,7 @@ from common.functions.constants import MANDATORY_RING_STATES
 import prod_actual.models as m
 import prod_concept.models as cm
 import prod_concept.api.serializers as cs
+from decimal import Decimal
 
 
 class ProdRingSerializer(serializers.ModelSerializer):
@@ -27,18 +28,24 @@ class ProdRingSerializer(serializers.ModelSerializer):
         return instance
 
     def update(self, instance, validated_data):
-        # Apply incoming changes (including concept_ring or blastsolids_volume)
         instance = super().update(instance, validated_data)
-        # Only recalc if either field changed
         if 'concept_ring' in validated_data or 'blastsolids_volume' in validated_data:
             self._recalculate_designed_tonnes(instance)
         return instance
 
     def _recalculate_designed_tonnes(self, instance):
-        density = getattr(instance.concept_ring, 'density', 0) or 0
-        volume = instance.blastsolids_volume or 0
+
+        volume = instance.blastsolids_volume
+        # Don’t touch designed_tonnes if there’s no volume yet.
+        if volume in (None, Decimal('0'), 0):
+            return
+
+        density = instance.concept_ring.density
+        # If density is missing, don’t overwrite with 0 — just bail.
+        if density in (None, Decimal('0'), 0):
+            return
+
         instance.designed_tonnes = density * volume
-        # only update that one column
         instance.save(update_fields=['designed_tonnes'])
 
 
