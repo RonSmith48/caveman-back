@@ -91,7 +91,7 @@ class RingDesignService:
 
     def __init__(self):
         self.ring_map = {}
-        self.draw_correction = 0.08  # Hardcoded multiplier for draw correction
+        self.draw_correction = Decimal('0.08')  # Hardcoded multiplier for draw correction
 
     def upload_design(self, ring_file, hole_file):
         if not ring_file or not hole_file:
@@ -127,7 +127,7 @@ class RingDesignService:
                 if not alias or alias == '_':
                     continue
 
-                draw_pct = row.get('draw')
+                draw_pct = Decimal(row.get('draw'))
                 is_flow = draw_pct == -1
                 if is_flow:
                     draw_pct = 100
@@ -157,22 +157,18 @@ class RingDesignService:
                     'design_date': date.today().isoformat()
                 }
 
+                write_defaults = {k: v for k, v in new_values.items() if k not in CREATE_ONLY}
+
                 obj, created = m.ProductionRing.objects.update_or_create(
-                    alias=alias)
+                    alias=alias,
+                    defaults=write_defaults,   # ensures create has level, x, y, z, etc.
+                )
 
+                # If it was created, set the create-only fields now.
                 if created:
-                    # brand‑new ring: set everything
-                    for attr, val in new_values.items():
-                        setattr(obj, attr, val)
-
-                else:
-                    # existing ring: only fill blanks *and* skip CREATE_ONLY fields
-                    for attr, val in new_values.items():
-                        if attr in CREATE_ONLY:
-                            continue
-                        setattr(obj, attr, val)
-
-                obj.save()
+                    for k in CREATE_ONLY:
+                        setattr(obj, k, new_values[k])
+                    obj.save(update_fields=list(CREATE_ONLY))
 
                 self.ring_map[alias] = obj
                 logger.info(
@@ -215,17 +211,22 @@ class RingDesignService:
             logger.error(f"Error processing hole file: {e}", exc_info=True)
             raise
 
-    def _decimal(self, value):
+    def _decimal(self, v, default=None):
         try:
-            return Decimal(value.strip()) if value else None
+            if v is None:
+                return default
+            s = str(v).strip()
+            if s == '':
+                return default
+            return Decimal(s)
         except Exception:
-            return None
+            return default
 
-    def _int(self, value):
+    def _int(self, v, default=None):
         try:
-            return int(value.strip()) if value else None
+            return int(str(v).strip())
         except Exception:
-            return None
+            return default
 
 
 class ProdOrphans():
