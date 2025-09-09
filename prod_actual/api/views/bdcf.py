@@ -251,7 +251,8 @@ class BDCFRings():
                     return datetime.strptime(value, fmt).date()
                 except ValueError:
                     pass
-        raise ValueError("Invalid date. Expected YYYY-MM-DD, DD/MM/YYYY, or YYYYMMDD.")
+        raise ValueError(
+            "Invalid date. Expected YYYY-MM-DD, DD/MM/YYYY, or YYYYMMDD.")
 
     def ring_number_namer(self, ring_num_txt):
         if ring_num_txt and ring_num_txt[0].isdigit():
@@ -404,9 +405,11 @@ class BDCFRings():
             ring = m.ProductionRing.objects.get(location_id=location_id)
 
             # Parse inputs
-            d = self._parse_date(data.get('date'))                      # '2025-08-29' -> date(2025,8,29)
+            # '2025-08-29' -> date(2025,8,29)
+            d = self._parse_date(data.get('date'))
             shift = data.get('shift')
-            fireby_date = d + timedelta(days=default_sleep_days)   # date + 28 days
+            # date + 28 days
+            fireby_date = d + timedelta(days=default_sleep_days)
             # Shkey
             shkey = data.get('shkey')
             if not shkey:
@@ -415,7 +418,8 @@ class BDCFRings():
             # Update fields
             ring.charge_shift = shkey
             ring.status = data.get('status', ring.status)
-            ring.detonator_actual = data.get('explosive', ring.detonator_actual)
+            ring.detonator_actual = data.get(
+                'explosive', ring.detonator_actual)
             ring.fireby_date = fireby_date
 
             # Conditions is already a list in your payload; keep a guard anyway
@@ -427,7 +431,8 @@ class BDCFRings():
             ring.save()
 
             # Use incoming status when cleaning up
-            self.auto_remove_ring_conditions('Drilled', location_id, request.user)
+            self.auto_remove_ring_conditions(
+                'Drilled', location_id, request.user)
             self.create_ring_conditions(request, conditions)
 
             return Response({'msg': {'body': 'Production ring updated successfully', 'type': 'success'}},
@@ -1192,27 +1197,29 @@ class BDCFRings():
                     print("parsing failed", e)
 
             touched = True
-            created_rings_info = self.get_created_rings_status(g.group_rings)
-            if g.pooled_rings['status'] == created_rings_info['status'] and not created_rings_info['touched']:
-                touched = False
-            row = {'id': g.multifire_group_id,
-                   'date': g.created_at,
-                   'level': g.level,
-                   'contributor': {
-                       "full_name": g.entered_by.get_full_name() if g.entered_by else "Anonymous User",
-                       "avatar": g.entered_by.avatar,
-                       "initials": g.entered_by.initials,
-                   } if g.entered_by else None,
+            created_rings_info = self.get_created_rings_status(g)
+            if created_rings_info:
+                if g.pooled_rings['status'] == created_rings_info['status'] and not created_rings_info['touched']:
+                    touched = False
+                row = {'id': g.multifire_group_id,
+                       'date': g.created_at,
+                       'level': g.level,
+                       'contributor': {
+                           "full_name": g.entered_by.get_full_name() if g.entered_by else "Anonymous User",
+                           "avatar": g.entered_by.avatar,
+                           "initials": g.entered_by.initials,
+                       } if g.entered_by else None,
 
-                   'touched': touched,
-                   'pooled_rings': g.pooled_rings,
-                   'group_rings': created_rings_info['rings'],
-                   'oredrive': created_rings_info['oredrive']}
-            groups.append(row)
+                       'touched': touched,
+                       'pooled_rings': g.pooled_rings,
+                       'group_rings': created_rings_info['rings'],
+                       'oredrive': created_rings_info['oredrive']}
+                groups.append(row)
 
         return groups
 
-    def get_created_rings_status(self, group_rings):
+    def get_created_rings_status(self, g):
+        group_rings = g.group_rings
         oredrive = None
         oredrive_same = True
         status_same = True
@@ -1240,10 +1247,24 @@ class BDCFRings():
                          'status': ring_status}
             rings_list.append(ring_info)
 
-        if oredrive_same == False:
+        if not rings_list:
+            return None
+
+        # NEW: If all rings are Complete, deactivate the group and return None
+        if all(ri['status'] == 'Complete' for ri in rings_list):
+            g.is_active = False
+            g.save(update_fields=['is_active'])
+            return None
+
+        if not oredrive_same:
             oredrive = 'Multiple'
 
-        return {'touched': not status_same, 'status': status, 'rings': rings_list, 'oredrive': oredrive}
+        return {
+            'touched': not status_same,
+            'status': status,
+            'rings': rings_list,
+            'oredrive': oredrive
+        }
 
     def delete_group(self, request, group):
         try:
